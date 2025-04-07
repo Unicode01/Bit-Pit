@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bit-Pit Visualization Web Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        nav {
+            background-color: #2c3e50;
+            padding: 1rem 2rem;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: #ecf0f1;
+            text-decoration: none;
+            font-size: 1rem;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: #3498db;
+        }
+
+        .auth-links {
+            display: flex;
+            gap: 1.5rem;
+            margin-left: 2rem;
+        }
+
+        .auth-links a {
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+
+        .auth-links a:first-child {
+            background-color: #3498db;
+        }
+
+        .auth-links a:last-child {
+            background-color: #27ae60;
+        }
+
+        .auth-links a:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.2/dist/echarts.min.js"></script>
+</head>
+
+<body>
+    <nav>
+        <div class="nav-container">
+            <a href="#" class="logo">Bit-Pit</a>
+            <div class="nav-links">
+                <div class="menu-items">
+                    <a href="#" class="active">Home</a>
+                    <a href="#visualization">Visualization</a>
+                    <a href="#about">About</a>
+                </div>
+                <div class="auth-links">
+                    <a href="#login">Login</a>
+                    <a href="#fresh">Fresh</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div style="margin-top: 100px; padding: 20px;">
+        <div style="margin-top: 100px; padding: 20px; height: calc(100vh - 140px);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>BP Tree Map</h2>
+                <select id="dataView" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd;">
+                    <option value="tree">树形视图</option>
+                    <option value="raw">原始数据</option>
+                </select>
+            </div>
+            <div id="mindmap" style="width: 100%; height: 90%; border: 1px solid #eee;"></div>
+            <pre id="rawData" style="display: none; width: 100%; height: 90%; border: 1px solid #eee; 
+                padding: 20px; overflow: auto; background: #f8f9fa; margin-top: 20px;"></pre>
+        </div>
+    </div>
+    <script>
+        // 新增数据视图切换逻辑
+        const viewSelector = document.getElementById('dataView');
+        const rawDataElement = document.getElementById('rawData');
+
+        viewSelector.addEventListener('change', function () {
+            const showRaw = this.value === 'raw';
+            chart.getDom().style.display = showRaw ? 'none' : 'block';
+            rawDataElement.style.display = showRaw ? 'block' : 'none';
+        });
+
+        // 修改更新数据函数
+        let currentData = null; // 用于存储当前数据
+
+        // 刷新数据
+        function refreshData() {
+            chart.showLoading();
+            // 调用api接口获取数据
+            const token = localStorage.getItem('bitpit-token');
+            if (!token) {
+                alert('请先登录！');
+                return;
+            }
+            api = 'http://' + window.location.host + '/api/getinfo';
+            fetch(api, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    updateChartData(data);
+                    // 如果当前是原始数据视图，立即更新显示
+                    if (viewSelector.value === 'raw') {
+                        rawDataElement.textContent = JSON.stringify(data, null, 2);
+                    }
+                })
+                .catch(error => {
+                    console.error(error);
+                    alert('获取数据失败，请检查网络连接或令牌是否过期！');
+                })
+                .finally(() => {
+                    chart.hideLoading();
+                });
+        }
+
+        // 更新图表数据
+        function updateChartData(data) {
+            // 刷新图表
+            currentData = data;
+            chart.setOption({
+                tooltip: { trigger: 'item' },
+                series: [
+                    {
+                        type: 'tree',
+                        data: [data],
+                        left: '2%',
+                        right: '2%',
+                        top: '8%',
+                        bottom: '20%',
+                        symbol: 'emptyCircle',
+                        orient: 'vertical',
+                        expandAndCollapse: true,
+                        label: {
+                            position: 'top',
+                            rotate: -90,
+                            verticalAlign: 'middle',
+                            align: 'right',
+                            fontSize: 9
+                        },
+                        leaves: {
+                            label: {
+                                position: 'bottom',
+                                rotate: -90,
+                                verticalAlign: 'middle',
+                                align: 'left'
+                            }
+                        },
+                        animationDurationUpdate: 750
+                    }]
+            });
+            rawDataElement.textContent = JSON.stringify(data, null, 2);
+        }
+
+        // 登录功能
+        document.querySelector('.auth-links a').addEventListener('click', function (e) {
+            e.preventDefault(); // 阻止默认链接跳转
+
+            // 弹出输入框获取token
+            const token = prompt('请输入您的访问令牌:');
+
+            if (token) {
+                // 保存到localStorage
+                localStorage.setItem('bitpit-token', token);
+                alert('令牌已保存！');
+                // 这里可以添加后续的验证逻辑或界面更新
+                refreshData();
+            } else {
+                alert('请输入有效的访问令牌');
+            }
+        });
+        // 刷新功能
+        document.querySelector('.auth-links a:last-child').addEventListener('click', function (e) {
+            e.preventDefault(); // 阻止默认链接跳转
+            refreshData();
+        });
+
+        // 初始化图表
+        const chart = echarts.init(document.getElementById('mindmap'));
+        // 示例数据
+        const data = {
+            name: 'Waiting Data',
+        };
+
+        // 配置选项
+        const option = {
+            tooltip: { trigger: 'item' },
+            series: [
+                {
+                    type: 'tree',
+                    data: [data],
+                    left: '2%',
+                    right: '2%',
+                    top: '8%',
+                    bottom: '20%',
+                    symbol: 'emptyCircle',
+                    orient: 'vertical',
+                    expandAndCollapse: true,
+                    label: {
+                        position: 'top',
+                        rotate: -90,
+                        verticalAlign: 'middle',
+                        align: 'right',
+                        fontSize: 9
+                    },
+                    leaves: {
+                        label: {
+                            position: 'bottom',
+                            rotate: -90,
+                            verticalAlign: 'middle',
+                            align: 'left'
+                        }
+                    },
+                    animationDurationUpdate: 750
+                }]
+        };
+
+        chart.setOption(option);
+
+        chart.on('click', function (params) {
+            console.log(params);
+        });
+    </script>
+</body>
+
+</html>
