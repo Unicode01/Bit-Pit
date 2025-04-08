@@ -293,6 +293,8 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 			// read packet
 			newpacket := make([]byte, PacketBuffer)
 			num, err := conn.Read(newpacket)
+			// data info log
+			TreeInfo.dataReceived += uint64(num)
 			if err != nil {
 				ThrowError(err)
 				if isclosedconn(err) {
@@ -361,6 +363,9 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 							ThrowError(err)
 						}
 					}()
+				default:
+					// drop packet
+					TreeInfo.packetRecvDropped += 1
 
 				}
 			}
@@ -1643,6 +1648,9 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn) {
 		// receive message from upstream
 		packet := make([]byte, PacketBuffer)
 		num, err := conn.Read(packet)
+		// data info log
+		TreeInfo.dataReceived += uint64(num)
+		TreeInfo.packetReceived++
 		if err != nil {
 			ThrowError(err)
 			if isclosedconn(err) {
@@ -1678,7 +1686,9 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn) {
 						ThrowError(err)
 					}
 				}()
-
+			default:
+				// dropped
+				TreeInfo.packetRecvDropped++
 			}
 		}
 	}
