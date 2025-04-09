@@ -1,6 +1,7 @@
 package web
 
 import (
+	"Bit-Pit/utils"
 	_ "embed"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ var (
 	server     *http.Server
 	VisitToken string
 	Data       []byte
+	NodeInfo   []byte
 )
 
 //go:embed templete/index.html
@@ -20,6 +22,10 @@ var PageNotFound []byte
 
 //go:embed templete/403.html
 var PageNoPermission []byte
+
+func generateNodeInfo() {
+	NodeInfo = utils.Marshal()
+}
 
 func InitWebServer(port int, visitToken string) error {
 	VisitToken = visitToken
@@ -37,13 +43,26 @@ func serverHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html")
 			w.Write(PageIndex)
 		}
-		if r.URL.Path == "/api/getinfo" {
+		if r.URL.Path == "/api/getTreeInfo" {
 			token := r.Header.Get("Authorization") // bearer token
 			// get token
 			token = token[7:] // remove "bearer "
 			if token == VisitToken {
 				w.Header().Set("Content-Type", "application/json")
 				w.Write(Data)
+			} else {
+				w.Header().Set("Content-Type", "text/html")
+				w.Write(PageNoPermission)
+			}
+		}
+		if r.URL.Path == "/api/getNodeInfo" {
+			token := r.Header.Get("Authorization") // bearer token
+			// get token
+			token = token[7:] // remove "bearer "
+			if token == VisitToken {
+				generateNodeInfo()
+				w.Header().Set("Content-Type", "application/json")
+				w.Write(NodeInfo)
 			} else {
 				w.Header().Set("Content-Type", "text/html")
 				w.Write(PageNoPermission)

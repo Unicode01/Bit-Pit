@@ -67,10 +67,7 @@ func (n *NTree) prepareForMarshal() {
 	}
 }
 
-var Tree = &NTree{
-	Name:     "BP Root Node",
-	children: make(map[string]*NTree),
-}
+var Tree = &NTree{}
 
 func FillID(id [8]byte, imIHere bool) {
 	current := Tree
@@ -205,7 +202,10 @@ func handleChannelMessage(n *utils.NodeTree, channelID [2]byte) {
 			method, _ := processMessage(data)
 			if method == 2 { // receive info
 				FillID(srcID, false)
-				jsonData, _ := Tree.MarshalJSON()
+				jsonData, err := Tree.MarshalJSON()
+				if err != nil {
+					jsonData = []byte("{}")
+				}
 				web.Data = jsonData
 			}
 		}

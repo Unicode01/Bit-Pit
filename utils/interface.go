@@ -29,8 +29,8 @@ func onPacket(n *NodeTree, data []byte) error {
 	}
 
 	if net.IP.Equal(srcIP, localIP) { // from local node
-		InterfaceInfo.dataSent += uint64(len(data))
-		InterfaceInfo.packetSent++
+		InterfaceInfo.DataSent += uint64(len(data))
+		InterfaceInfo.PacketSent++
 		// transfer this packet to remote node
 		// get remote ID
 		remoteip := dstIP.To16()
@@ -46,8 +46,8 @@ func onPacket(n *NodeTree, data []byte) error {
 			return err
 		}
 	} else if net.IP.Equal(dstIP, localIP) { // from remote node
-		InterfaceInfo.dataReceived += uint64(len(data))
-		InterfaceInfo.packetReceived++
+		InterfaceInfo.DataReceived += uint64(len(data))
+		InterfaceInfo.PacketReceived++
 		InterFace.Write(data)
 	}
 
