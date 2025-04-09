@@ -286,6 +286,7 @@ func (p *QReverseConnPacket) Unmarshal(data []byte) error {
 // QDataTransferTo
 // Query for data transfer
 //
+// In order to process big data, this methods wouln't use GeneratePacket(Using zero copy),
 
 type QDataTransferTo struct {
 	SessionID [8]byte       // Session ID for Query
@@ -299,11 +300,18 @@ type QDataTransferTo struct {
 
 func (p *QDataTransferTo) Marshal() ([]byte, error) {
 	// Calculate total length
-	totalLen := 8 + IDlenth*2 + ChannelIDMaxLenth + 8 + len(p.Data) + len(p.ExtraData) + 1
+	totalLen := 4 + 4 //header length
+	// 4 bytes method code
+	// 4 bytes data length
+	totalLen += 8 + IDlenth*2 + ChannelIDMaxLenth + 8 + len(p.Data) + len(p.ExtraData) + 1
 	transferP := make([]byte, totalLen)
+	// generate header
+	binary.LittleEndian.PutUint32(transferP[0:4], pMethodTransferTo)
+	lenth := uint32((8 + IDlenth*2 + ChannelIDMaxLenth + 8 + len(p.Data) + len(p.ExtraData) + 1))
+	binary.LittleEndian.PutUint32(transferP[4:8], lenth)
 
 	// Copy fixed-size fields
-	offset := 0
+	offset := 8
 	copy(transferP[offset:], p.SessionID[:])
 	offset += 8
 	copy(transferP[offset:], p.SrcNodeID[:])
@@ -332,7 +340,7 @@ func (p *QDataTransferTo) Marshal() ([]byte, error) {
 	}
 	copy(transferP[offset:], []byte{noRespByte})
 
-	return GeneratePacket(pMethodTransferTo, transferP)
+	return transferP, nil
 }
 
 func (p *QDataTransferTo) Unmarshal(data []byte) error {
