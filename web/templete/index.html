@@ -1,11 +1,14 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh">
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Bit-Pit Visualization Web Server</title>
+    <!-- 引入 Echarts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.2/dist/echarts.min.js"></script>
     <style>
+        /* 通用重置 */
         * {
             margin: 0;
             padding: 0;
@@ -13,35 +16,43 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
-        nav {
+        body {
+            background-color: #f4f6f8;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        /* 导航栏 */
+        header {
             background-color: #2c3e50;
-            padding: 1rem 2rem;
-            position: fixed;
-            width: 100%;
-            top: 0;
-            z-index: 1000;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
         }
 
         .nav-container {
             max-width: 1200px;
             margin: 0 auto;
+            padding: 1rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
         .logo {
-            color: white;
-            font-size: 1.5rem;
+            color: #fff;
+            font-size: 1.8rem;
             font-weight: bold;
             text-decoration: none;
         }
 
         .nav-links {
             display: flex;
-            gap: 2rem;
             align-items: center;
+            gap: 2rem;
         }
 
         .nav-links a {
@@ -57,258 +68,285 @@
 
         .auth-links {
             display: flex;
-            gap: 1.5rem;
+            gap: 1rem;
             margin-left: 2rem;
         }
 
         .auth-links a {
             padding: 0.5rem 1rem;
-            border-radius: 5px;
+            border-radius: 4px;
+            color: #fff;
+            text-decoration: none;
             transition: background-color 0.3s ease;
         }
 
-        .auth-links a:first-child {
+        .login-btn {
             background-color: #3498db;
         }
 
-        .auth-links a:last-child {
+        .refresh-btn {
             background-color: #27ae60;
         }
 
         .auth-links a:hover {
-            background-color: rgba(255, 255, 255, 0.1);
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* 主体内容 */
+        main {
+            max-width: 1200px;
+            margin: 120px auto 20px;
+            padding: 0 1rem;
+        }
+
+        section {
+            background: #fff;
+            margin-bottom: 40px;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .section-header h2 {
+            font-size: 1.4rem;
+            color: #333;
+        }
+
+        .data-select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .chart-box,
+        .data-box {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            overflow: auto;
+            background: #f8f9fa;
+            padding: 10px;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .nav-container {
+                flex-direction: column;
+            }
+
+            .nav-links {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .auth-links {
+                margin-top: 10px;
+            }
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.2/dist/echarts.min.js"></script>
 </head>
 
 <body>
-    <nav>
+    <!-- 头部导航 -->
+    <header>
         <div class="nav-container">
             <a href="#" class="logo">Bit-Pit</a>
-            <div class="nav-links">
-                <div class="menu-items">
-                    <a href="#" class="active">Home</a>
-                    <a href="#visualization">Visualization</a>
-                    <a href="#about">About</a>
-                </div>
+            <nav class="nav-links">
+                <a href="#" class="active">首页</a>
+                <a href="#visualization">可视化</a>
+                <!-- 关于按钮修改为跳转到 GitHub 页面 -->
+                <a href="https://github.com/Unicode01/Bit-Pit" target="_blank">关于</a>
                 <div class="auth-links">
-                    <a href="#login">Login</a>
-                    <a href="#fresh">Fresh</a>
+                    <a href="#login" class="login-btn">登录</a>
+                    <a href="#refresh" class="refresh-btn">刷新</a>
                 </div>
-            </div>
+            </nav>
         </div>
-    </nav>
+    </header>
 
-    <div style="margin-top: 100px; padding: 20px;">
-        <div style="margin-top: 100px; padding: 20px; height: calc(100vh - 140px);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <!-- 主体内容 -->
+    <main>
+        <!-- BP Tree Map 数据展示 -->
+        <section id="visualization">
+            <div class="section-header">
                 <h2>BP Tree Map</h2>
-                <select id="dataView" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd;">
+                <select id="dataView" class="data-select">
                     <option value="tree">树形视图</option>
                     <option value="raw">原始数据</option>
                 </select>
             </div>
-            <div id="mindmap" style="width: 100%; height: 90%; border: 1px solid #eee;"></div>
-            <pre id="rawData" style="display: none; width: 100%; height: 90%; border: 1px solid #eee; 
-                padding: 20px; overflow: auto; background: #f8f9fa; margin-top: 20px;"></pre>
-        </div>
-    </div>
+            <div id="mindmap" class="chart-box"></div>
+            <pre id="rawData" class="data-box" style="display: none;"></pre>
+        </section>
 
-    <div style="margin-top: 100px; padding: 20px;">
-        <div style="margin-top: 100px; padding: 20px; height: calc(100vh - 140px);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2>Node Information</h2>
-                <select id="nodeDataView" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd;">
+        <!-- Node 信息展示 -->
+        <section id="node-info">
+            <div class="section-header">
+                <h2>节点信息</h2>
+                <select id="nodeDataView" class="data-select">
                     <option value="raw">原始数据</option>
                 </select>
             </div>
-            <pre id="nodeRawData" style="display: block; width: 100%; height: 90%; border: 1px solid #eee; 
-                padding: 20px; overflow: auto; background: #f8f9fa; margin-top: 20px;"></pre>
-        </div>
-    </div>
+            <pre id="nodeRawData" class="data-box"></pre>
+        </section>
+    </main>
 
+    <!-- 脚本：数据刷新及交互逻辑 -->
     <script>
-        // 新增数据视图切换逻辑
+        // 图表初始化
+        const chart = echarts.init(document.getElementById('mindmap'));
+        // 默认示例数据
+        const defaultData = { name: 'Waiting Data' };
+        const option = {
+            tooltip: { trigger: 'item' },
+            series: [{
+                type: 'tree',
+                data: [defaultData],
+                left: '2%',
+                right: '2%',
+                top: '8%',
+                bottom: '20%',
+                symbol: 'emptyCircle',
+                orient: 'horizontal',
+                expandAndCollapse: false,
+                roam: true,
+                tooltip: {
+                    formatter: `{c}`
+                },
+                label: {
+                    position: 'top',
+                    rotate: -90,
+                    verticalAlign: 'middle',
+                    align: 'right',
+                    fontSize: 9
+                },
+                leaves: {
+                    label: {
+                        position: 'bottom',
+                        rotate: -90,
+                        verticalAlign: 'middle',
+                        align: 'left'
+                    }
+                },
+                animationDurationUpdate: 750
+            }]
+        };
+        chart.setOption(option);
+
+        // 数据视图切换逻辑
         const viewSelector = document.getElementById('dataView');
         const rawDataElement = document.getElementById('rawData');
 
-        viewSelector.addEventListener('change', function () {
-            const showRaw = this.value === 'raw';
+        viewSelector.addEventListener('change', () => {
+            const showRaw = viewSelector.value === 'raw';
+            // 根据视图类型显示/隐藏图表与数据
             chart.getDom().style.display = showRaw ? 'none' : 'block';
             rawDataElement.style.display = showRaw ? 'block' : 'none';
         });
 
-        // 修改更新数据函数
-        let currentData = null; // 用于存储当前数据
+        let currentData = null; // 存储当前树状数据
 
-        // 刷新数据
-        function refreshData() {
+        // 数据刷新函数
+        async function refreshData() {
+            // 显示加载状态
             chart.showLoading();
-            // 调用api接口获取数据
             const token = localStorage.getItem('bitpit-token');
             if (!token) {
                 alert('请先登录！');
+                chart.hideLoading();
                 return;
             }
-            api = 'http://' + window.location.host + '/api/getTreeInfo';
-            fetch(api, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            })
-                .then(response => response.json())
-                .then(data => {
-                    updateChartData(data);
-                    // 如果当前是原始数据视图，立即更新显示
-                    if (viewSelector.value === 'raw') {
-                        rawDataElement.textContent = JSON.stringify(data, null, 2);
+            const treeApi = `http://${window.location.host}/api/getTreeInfo`;
+
+            try {
+                const response = await fetch(treeApi, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
                     }
-                })
-                .catch(error => {
-                    console.error(error);
-                    alert('获取数据失败，请检查网络连接或令牌是否过期！');
-                })
-                .finally(() => {
-                    chart.hideLoading();
                 });
-            fetchNodeInfo();
+                const data = await response.json();
+                updateChartData(data);
+                // 同步更新原始数据显示
+                if (viewSelector.value === 'raw') {
+                    rawDataElement.textContent = JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                console.error(error);
+                alert('获取树状数据失败，请检查网络连接或令牌是否过期！');
+            } finally {
+                chart.hideLoading();
+            }
+            // 同时刷新节点信息
+            await fetchNodeInfo();
         }
 
+        // 节点信息获取
         async function fetchNodeInfo() {
             const token = localStorage.getItem('bitpit-token');
             if (!token) {
                 alert('请先登录！');
                 return;
             }
+            const nodeApi = `http://${window.location.host}/api/getNodeInfo`;
 
             try {
-                const api = `http://${window.location.host}/api/getNodeInfo`;
-                const response = await fetch(api, {
+                const response = await fetch(nodeApi, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
                 });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                document.getElementById('nodeRawData').textContent = JSON.stringify(data, null, 2);
+                if (!response.ok) throw new Error(`错误状态：${response.status}`);
+                const nodeData = await response.json();
+                document.getElementById('nodeRawData').textContent = JSON.stringify(nodeData, null, 2);
             } catch (error) {
-                console.error('获取节点信息失败:', error);
-                document.getElementById('nodeRawData').textContent = '获取节点信息失败: ' + error.message;
+                console.error('获取节点信息失败：', error);
+                document.getElementById('nodeRawData').textContent = '获取节点信息失败：' + error.message;
             }
         }
 
         // 更新图表数据
         function updateChartData(data) {
-            // 刷新图表
             currentData = data;
             chart.setOption({
-                tooltip: { trigger: 'item' },
-                series: [
-                    {
-                        type: 'tree',
-                        data: [data],
-                        left: '2%',
-                        right: '2%',
-                        top: '8%',
-                        bottom: '20%',
-                        symbol: 'emptyCircle',
-                        orient: 'vertical',
-                        expandAndCollapse: true,
-                        label: {
-                            position: 'top',
-                            rotate: -90,
-                            verticalAlign: 'middle',
-                            align: 'right',
-                            fontSize: 9
-                        },
-                        leaves: {
-                            label: {
-                                position: 'bottom',
-                                rotate: -90,
-                                verticalAlign: 'middle',
-                                align: 'left'
-                            }
-                        },
-                        animationDurationUpdate: 750
-                    }]
+                series: [{
+                    data: [data]
+                }]
             });
             rawDataElement.textContent = JSON.stringify(data, null, 2);
         }
 
-        // 登录功能
-        document.querySelector('.auth-links a').addEventListener('click', function (e) {
-            e.preventDefault(); // 阻止默认链接跳转
+        // 登录与刷新按钮事件处理
+        const loginBtn = document.querySelector('.login-btn');
+        const refreshBtn = document.querySelector('.refresh-btn');
 
-            // 弹出输入框获取token
+        loginBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // 弹出输入框获取 Token（也可以后续替换成更友好的登录窗体）
             const token = prompt('请输入您的访问令牌:');
-
             if (token) {
-                // 保存到localStorage
                 localStorage.setItem('bitpit-token', token);
                 alert('令牌已保存！');
-                // 这里可以添加后续的验证逻辑或界面更新
                 refreshData();
             } else {
                 alert('请输入有效的访问令牌');
             }
         });
-        // 刷新功能
-        document.querySelector('.auth-links a:last-child').addEventListener('click', function (e) {
-            e.preventDefault(); // 阻止默认链接跳转
+
+        refreshBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             refreshData();
         });
 
-        // 初始化图表
-        const chart = echarts.init(document.getElementById('mindmap'));
-        // 示例数据
-        const data = {
-            name: 'Waiting Data',
-        };
-
-        // 配置选项
-        const option = {
-            tooltip: { trigger: 'item' },
-            series: [
-                {
-                    type: 'tree',
-                    data: [data],
-                    left: '2%',
-                    right: '2%',
-                    top: '8%',
-                    bottom: '20%',
-                    symbol: 'emptyCircle',
-                    orient: 'vertical',
-                    expandAndCollapse: true,
-                    label: {
-                        position: 'top',
-                        rotate: -90,
-                        verticalAlign: 'middle',
-                        align: 'right',
-                        fontSize: 9
-                    },
-                    leaves: {
-                        label: {
-                            position: 'bottom',
-                            rotate: -90,
-                            verticalAlign: 'middle',
-                            align: 'left'
-                        }
-                    },
-                    animationDurationUpdate: 750
-                }]
-        };
-
-        chart.setOption(option);
-
-        chart.on('click', function (params) {
-            console.log(params);
-        });
     </script>
 </body>
 

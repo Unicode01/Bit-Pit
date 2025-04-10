@@ -1,5 +1,5 @@
 # Bit-Pit 
-[中文](https://github.com/Unicode01/Bit-Pit/blob/main/READMECN.md) | English
+[中文](https://github.com/Unicode01/Bit-Pit/blob/main/READMECN.md) | English  
 A lightweight private routing and networking tool
 
 # Features

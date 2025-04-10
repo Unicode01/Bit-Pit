@@ -41,7 +41,7 @@ func onPacket(n *NodeTree, data []byte) error {
 			if err == ErrInvalidSession {
 				n.RefreshUpstreamSession()
 			} else if isclosedconn(err) {
-				n.ReConnectToUpsream()
+				return err
 			}
 			return err
 		}

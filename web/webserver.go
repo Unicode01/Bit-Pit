@@ -56,19 +56,22 @@ func serverHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if r.URL.Path == "/api/getNodeInfo" {
-			token := r.Header.Get("Authorization") // bearer token
-			// get token
-			token = token[7:] // remove "bearer "
-			if token == VisitToken {
-				generateNodeInfo()
-				w.Header().Set("Content-Type", "application/json")
-				w.Write(NodeInfo)
-			} else {
-				w.Header().Set("Content-Type", "text/html")
-				w.Write(PageNoPermission)
+			// get args
+			args := r.URL.Query()
+			ID := args.Get("NodeID")
+			if ID == "" {
+				token := r.Header.Get("Authorization") // bearer token
+				// get token
+				token = token[7:] // remove "bearer "
+				if token == VisitToken {
+					generateNodeInfo()
+					w.Header().Set("Content-Type", "application/json")
+					w.Write(NodeInfo)
+				} else {
+					w.Header().Set("Content-Type", "text/html")
+					w.Write(PageNoPermission)
+				}
 			}
 		}
-	}
-	if r.Method == "POST" {
 	}
 }
