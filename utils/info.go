@@ -1,10 +1,14 @@
 package utils
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 var (
 	InterfaceInfo interfaceDataInfo
 	TreeInfo      treeDataInfo
+	NodeID        [IDlenth]byte
 )
 
 type interfaceDataInfo struct {
@@ -25,10 +29,12 @@ type treeDataInfo struct {
 
 func Marshal() []byte {
 	type combinedDataInfo struct {
+		NodeID    string            `json:"nodeId"`
 		Interface interfaceDataInfo `json:"interfaceInfo"`
 		Tree      treeDataInfo      `json:"treeInfo"`
 	}
 	combined := combinedDataInfo{
+		NodeID:    fmt.Sprintf("%x", NodeID[:]),
 		Interface: InterfaceInfo,
 		Tree:      TreeInfo,
 	}

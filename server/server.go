@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -67,29 +68,42 @@ func (n *NTree) prepareForMarshal() {
 	}
 }
 
-var Tree = &NTree{}
+var Tree = &NTree{
+	Name:     "root",
+	children: make(map[string]*NTree),
+}
 
-func FillID(id [8]byte, imIHere bool) {
+func FillID(id [8]byte, value string, info string) {
 	current := Tree
 	for i := 0; i < 8; i++ {
 		byteStr := fmt.Sprintf("%02x", id[i])
-		if byteStr == "00" {
-			continue
+		nextByteStr := "00"
+		if i+1 < len(id) {
+			nextByteStr = fmt.Sprintf("%02x", id[i+1])
 		}
+		if byteStr == "00" {
+			break
+		}
+
+		// 构造当前节点的Name
+		parentPrefix := current.Name[:i*2]           // 父节点的前缀长度为i*2
+		newName := parentPrefix + byteStr            // 拼接当前byteStr
+		remaining := 16 - len(newName)               // 计算剩余需要填充的长度
+		newName += strings.Repeat("00", remaining/2) // 用"00"填充剩余部分
 
 		if child, exists := current.children[byteStr]; exists {
 			current = child
 		} else {
-			if imIHere {
+			if nextByteStr == "00" { // last byte
 				newNode := &NTree{
-					Name:     byteStr + " - Im here",
+					Name:     newName,
 					children: make(map[string]*NTree),
 				}
 				current.children[byteStr] = newNode
 				current = newNode
 			} else {
 				newNode := &NTree{
-					Name:     byteStr,
+					Name:     newName,
 					children: make(map[string]*NTree),
 				}
 				current.children[byteStr] = newNode
@@ -114,6 +128,7 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool) {
 		panic(err)
 	}
 	fmt.Printf("Success to init local server node\n")
+	utils.NodeID = NodeTree.LocalUniqueId
 	err = NodeTree.BuildInterface()
 	fmt.Printf("Added local interface, ip: %s\n", NodeTree.LocalIPv6.String())
 	if err != nil {
@@ -122,7 +137,7 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool) {
 	// Load Web UI
 	go handleBroadcast(NodeTree)
 	go handleChannelMessage(NodeTree, [2]byte{0x00, 0x58})
-	FillID(RootID, true)
+	FillID(RootID, NodeTree.LocalIPv6.String(), string(utils.Marshal()))
 	go func() {
 		for {
 			SendGetInfoBroadcast(NodeTree)
@@ -145,7 +160,7 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 		panic(err)
 	}
 	fmt.Printf("Local Unique ID: %x\n", NodeTreeB.LocalUniqueId)
-
+	utils.NodeID = NodeTreeB.LocalUniqueId
 	err = NodeTreeB.BuildInterface()
 	fmt.Printf("Added local interface, ip: %s\n", NodeTreeB.LocalIPv6.String())
 	if err != nil {
@@ -161,7 +176,7 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 	}
 	go handleBroadcast(NodeTreeB)
 	go handleChannelMessage(NodeTreeB, [2]byte{0x00, 0x58})
-	FillID(NodeTreeB.LocalUniqueId, true)
+	FillID(NodeTreeB.LocalUniqueId, NodeTreeB.LocalIPv6.String(), string(utils.Marshal()))
 	go func() {
 		for {
 			SendGetInfoBroadcast(NodeTreeB)
@@ -187,7 +202,7 @@ func handleBroadcast(n *utils.NodeTree) {
 			// process broadcast message
 			method, _ := processMessage(data)
 			if method == 1 { //get info
-				psend := buildMessage(2, []byte("hello"))
+				psend := buildMessage(2, utils.Marshal())
 				n.SendTo(srcID, [2]byte{0x00, 0x58}, psend)
 			}
 		}
@@ -201,7 +216,7 @@ func handleChannelMessage(n *utils.NodeTree, channelID [2]byte) {
 			// process channel message
 			method, _ := processMessage(data)
 			if method == 2 { // receive info
-				FillID(srcID, false)
+				FillID(srcID, "", string(data))
 				jsonData, err := Tree.MarshalJSON()
 				if err != nil {
 					jsonData = []byte("{}")

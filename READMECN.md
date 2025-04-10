@@ -1,5 +1,5 @@
 # Bit-Pit
-中文 | [English](https://github.com/Unicode01/Bit-Pit/blob/main/README.md)
+中文 | [English](https://github.com/Unicode01/Bit-Pit/blob/main/README.md)  
 一款轻量级私有路由组网工具  
 # 功能
 * 将所有服务器连接为树状拓扑结构，自动创建私有IPv6网络实现节点间通信  
