@@ -344,6 +344,11 @@ func (p *QDataTransferTo) Marshal() ([]byte, error) {
 }
 
 func (p *QDataTransferTo) Unmarshal(data []byte) error {
+	// 8 bytes session ID
+	// 8 bytes src node ID
+	// 8 bytes dst node ID
+	// 2 bytes channel ID
+
 	// Check minimum length
 	if len(data) < 8+IDlenth*2+ChannelIDMaxLenth+8 {
 		return ErrInvalidData
@@ -351,19 +356,19 @@ func (p *QDataTransferTo) Unmarshal(data []byte) error {
 
 	// Read fixed-size fields
 	offset := 0
-	copy(p.SessionID[:], data[offset:offset+8])
+	copy(p.SessionID[:], data[offset:offset+8]) // 8
 	offset += 8
-	copy(p.SrcNodeID[:], data[offset:offset+IDlenth])
+	copy(p.SrcNodeID[:], data[offset:offset+IDlenth]) // 8
 	offset += IDlenth
-	copy(p.DstNodeID[:], data[offset:offset+IDlenth])
+	copy(p.DstNodeID[:], data[offset:offset+IDlenth]) // 8
 	offset += IDlenth
-	copy(p.ChannelID[:], data[offset:offset+ChannelIDMaxLenth])
+	copy(p.ChannelID[:], data[offset:offset+ChannelIDMaxLenth]) // 2
 	offset += ChannelIDMaxLenth
 
 	// Read data lengths
-	dataLen := binary.LittleEndian.Uint32(data[offset:])
+	dataLen := binary.LittleEndian.Uint32(data[offset:]) // 4
 	offset += 4
-	extraDataLen := binary.LittleEndian.Uint32(data[offset:])
+	extraDataLen := binary.LittleEndian.Uint32(data[offset:]) // 4
 	offset += 4
 
 	// Check total length
