@@ -76,7 +76,7 @@ const (
 	MessageTypeUnicast   = 0
 	MessageTypeBroadcast = 1
 
-	PacketBuffer = 1024 //Byte Max packet size (one time read)
+	PacketBuffer = 4096 //Byte Max packet size (one time read)
 
 	AutoReconnect     = true // if true, auto reconnect when connection lost
 	MaxReconnectRetry = 3    // max retry times when connection lost
@@ -288,13 +288,13 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 	}
 	// enter message loop
 	var packet []byte
+	newpacket := make([]byte, PacketBuffer) // buffer
 	for {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("message loop stopped")
 		default:
 			// read packet
-			newpacket := make([]byte, PacketBuffer)
 			num, err := conn.Read(newpacket)
 			// data info log
 			TreeInfo.DataReceived += uint64(num)
@@ -703,7 +703,7 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte) error {
 	return nil
 }
 
-// This Method will cost 1 TTL
+// This Method will cost NO TTL
 // used to done the downstream reverse connection
 func (n *NodeTree) handleReverseConnPacket(conn net.Conn, packet []byte) error {
 	var reverseConnP QReverseConnPacket
@@ -736,7 +736,6 @@ func (n *NodeTree) handleReverseConnPacket(conn net.Conn, packet []byte) error {
 		return ErrInvalidSession
 	}
 	// session check pass
-	n.reduceTTL(session.UniqueID)
 	// save to reverse connection
 	v, ok = n.Downstream.Load(reverseConnP.UniqueID)
 	if !ok {
@@ -840,6 +839,9 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 			}
 			return err
 		}
+		if transferP.NoResp {
+			return nil
+		}
 		// Method OK
 		RMethodOK, err := GeneratePacket(pMethodOK, nil)
 		if err != nil {
@@ -914,6 +916,9 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 				return err
 			}
 			return err
+		}
+		if transferP.NoResp {
+			return nil
 		}
 		// Method OK
 		RMethodOK, err := GeneratePacket(pMethodOK, nil)
@@ -1393,6 +1398,7 @@ func (n *NodeTree) doneConnectionsToUpstream(thread int) error {
 	return nil
 }
 
+// NO session TTL reduce
 // this method is used to create a reverse connection to the upstream node
 // receive Methods from Upstream Node
 // no locker
@@ -1622,9 +1628,9 @@ func (n *NodeTree) RemoveSelfFromUpstream() error {
 func (n *NodeTree) reverseConnMessageLoop(conn net.Conn) {
 	defer conn.Close()
 	var RQP []byte
+	packet := make([]byte, PacketBuffer) // buffer
 	for {
 		// receive message from upstream
-		packet := make([]byte, PacketBuffer)
 		num, err := conn.Read(packet)
 		// data info log
 		TreeInfo.DataReceived += uint64(num)
@@ -1641,12 +1647,15 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn) {
 				}
 				n.RemoteInitPoint.conn.reverseConn = append(n.RemoteInitPoint.conn.reverseConn[:cu], n.RemoteInitPoint.conn.reverseConn[cu+1:]...)
 				n.RemoteInitPoint.conn.reverseWriteLock = append(n.RemoteInitPoint.conn.reverseWriteLock[:cu], n.RemoteInitPoint.conn.reverseWriteLock[cu+1:]...)
+				if len(n.RemoteInitPoint.conn.reverseConn) < 1 {
+					n.RemoteInitPoint.conn.currentReverseConn = 0
+					break
+				}
 				n.RemoteInitPoint.conn.currentReverseConn = (n.RemoteInitPoint.conn.currentReverseConn + 1) % len(n.RemoteInitPoint.conn.reverseConn) // avoid index out of range
 				break
 			}
 		}
-		packet = packet[:num]
-		RQP = append(RQP, packet[:]...)
+		RQP = append(RQP, packet[:num]...)
 		for {
 			method, data, realLen, err := ResolvPacket(RQP)
 			if err != nil {
