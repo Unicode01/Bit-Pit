@@ -102,6 +102,10 @@ Usage of ./Bit-Pit:
 ``` 
 这条命令会将本机连接至100.0.0.0:10888,并作为次节点的子节点,同时开放本机::10888端口用于接收其他节点的连接请求(仅在Able2AddChildNode=true时有效)
 运行完成之后会输出本节点的LocalID和在私网内的IPv6地址
+### 自动安装
+```bash
+bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/install.sh)
+```
 
 # F&Q
 * 能提供Windows版本吗?

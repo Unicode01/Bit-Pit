@@ -104,6 +104,10 @@ After running, the node's LocalID and private IPv6 address will be displayed.
 ``` 
 This command connects the node to `100.0.0.0:10888` as a child node, and also opens local port `::10888` to accept connection requests from other nodes (only effective when Able2AddChildNode=true).  
 After running, the node's LocalID and private IPv6 address will be displayed.
+### Auto install
+```bash
+bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/install.sh)
+```
 
 # F&Q
 * Is there a Windows version?
