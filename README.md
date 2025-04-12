@@ -130,3 +130,9 @@ ServerC1      ServerC2
 ```
 I need to frequently access ServerC2 from ServerC1, which would go through ServerR. This increases the load on ServerR and response time. What should I do?
   * It's recommended to connect ServerC2 directly to ServerC1 as a child node. This way, communication from ServerC1 to ServerC2 will be direct, avoiding ServerR and reducing response time.
+
+# Thanks
+## Server Providers
+**[Alice Networks](https://app.alice.ws/)**
+**[云曦幻镜](https://cloud.bffyun.com/)**
+**[Bage Networks](https://www.bagevm.com/)** 

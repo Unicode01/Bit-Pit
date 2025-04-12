@@ -2,17 +2,17 @@ package utils
 
 //	2025.3.17	Unicode
 //		_____________						_____________
-//		|			|						|			|
-//		|			|						|			|
-//		|			|						|			|
-//		|			|						|			|
-//		|			|						|			|
-//		|			|						|			|
-//		|			|						|			|
-//		|			|						|			|
-//		|			|						|			|
-//		|___________|						|___________|
-//						_______________
+//      |           |                       |           |
+//      |           |                       |           |
+//      |           |                       |           |
+//      |           |                       |           |
+//      |           |                       |           |
+//      |           |                       |           |
+//      |           |                       |           |
+//      |           |                       |           |
+//      |           |                       |           |
+//      |___________|                       |___________|
+//                       _______________
 //
 
 import (
@@ -26,14 +26,11 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
-	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"math/big"
@@ -218,13 +215,12 @@ func NewNodeTree() *NodeTree {
 		LocalInitPoint:  NewServerInitPoint(),
 		RemoteInitPoint: NewServerInitPoint(),
 	}
-	go n.signalEvent()
 	return n
 }
 
 // this func is used to build local node server Listener
 // return a context.Context object to control the message loop thread
-func (n *NodeTree) InitLocalServerNode() (context.Context, error) {
+func (n *NodeTree) InitLocalServerNode(ctx context.Context) error {
 	var err error
 	// create local raw server
 	n.LocalInitPoint.conn.connectionType = 1 //default is 1 for TCP/UDP
@@ -232,28 +228,27 @@ func (n *NodeTree) InitLocalServerNode() (context.Context, error) {
 	n.LocalInitPoint.conn.rawListener, err = net.Listen(n.LocalInitPoint.NetWork, net.JoinHostPort(n.LocalInitPoint.IpAddr, fmt.Sprintf("%d", n.LocalInitPoint.Port)))
 
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// create local TLS settings
 	if n.LocalInitPoint.tlsSettings.Enabled {
 		if n.LocalInitPoint.tlsSettings.Cert == "" || n.LocalInitPoint.tlsSettings.Key == "" {
 			n.LocalInitPoint.tlsSettings.Cert, n.LocalInitPoint.tlsSettings.Key, err = GenerateSelfSignedCert()
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 		cert, err := tls.X509KeyPair([]byte(n.LocalInitPoint.tlsSettings.Cert), []byte(n.LocalInitPoint.tlsSettings.Key))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		n.LocalInitPoint.tlsSettings.TLSConfig = &tls.Config{
 			Certificates: []tls.Certificate{cert},
 		}
 	}
-	ctx := context.Background()
 	// create message loop thread
 	go n.serverLoop(ctx)
-	return ctx, nil
+	return nil
 }
 
 func (n *NodeTree) serverLoop(ctx context.Context) error {
@@ -652,13 +647,11 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte) error {
 		}
 		cu := n.RemoteInitPoint.conn.currentConn
 		n.RemoteInitPoint.conn.currentConn = (n.RemoteInitPoint.conn.currentConn + 1) % len(n.RemoteInitPoint.conn.rawConn)
+		n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
+		defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 		if n.RemoteInitPoint.conn.connectionType == 1 {
-			n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
-			defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 			_, err = n.RemoteInitPoint.conn.rawConn[cu].Write(QbroadcastPraw)
 		} else {
-			n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
-			defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 			_, err = n.RemoteInitPoint.conn.tlsConn[cu].Write(QbroadcastPraw)
 		}
 		if err != nil {
@@ -1206,15 +1199,12 @@ func (n *NodeTree) connectToInitPoint(initpoint *ServerInitPoint) error {
 	if err != nil {
 		return err
 	}
-
+	initpoint.conn.clientMessageLocker[initpoint.conn.currentConn].Lock()
+	defer initpoint.conn.clientMessageLocker[initpoint.conn.currentConn].Unlock()
 	// send verify packet to initpoint
 	if initpoint.conn.connectionType == 1 {
-		initpoint.conn.clientMessageLocker[initpoint.conn.currentConn].Lock()
-		defer initpoint.conn.clientMessageLocker[initpoint.conn.currentConn].Unlock()
 		_, err = initpoint.conn.rawConn[initpoint.conn.currentConn].Write(verifyPraw)
 	} else if initpoint.conn.connectionType == 2 {
-		initpoint.conn.clientMessageLocker[initpoint.conn.currentConn].Lock()
-		defer initpoint.conn.clientMessageLocker[initpoint.conn.currentConn].Unlock()
 		_, err = initpoint.conn.tlsConn[initpoint.conn.currentConn].Write(verifyPraw)
 	}
 	if err != nil {
@@ -1278,14 +1268,12 @@ func (n *NodeTree) RefreshUpstreamSession() error {
 		return err
 	}
 
+	n.RemoteInitPoint.conn.clientMessageLocker[n.RemoteInitPoint.conn.currentConn].Lock()
+	defer n.RemoteInitPoint.conn.clientMessageLocker[n.RemoteInitPoint.conn.currentConn].Unlock()
 	// send verify packet to initpoint
 	if n.RemoteInitPoint.conn.connectionType == 1 {
-		n.RemoteInitPoint.conn.clientMessageLocker[n.RemoteInitPoint.conn.currentConn].Lock()
-		defer n.RemoteInitPoint.conn.clientMessageLocker[n.RemoteInitPoint.conn.currentConn].Unlock()
 		_, err = n.RemoteInitPoint.conn.rawConn[n.RemoteInitPoint.conn.currentConn].Write(verifyPraw)
 	} else if n.RemoteInitPoint.conn.connectionType == 2 {
-		n.RemoteInitPoint.conn.clientMessageLocker[n.RemoteInitPoint.conn.currentConn].Lock()
-		defer n.RemoteInitPoint.conn.clientMessageLocker[n.RemoteInitPoint.conn.currentConn].Unlock()
 		_, err = n.RemoteInitPoint.conn.tlsConn[n.RemoteInitPoint.conn.currentConn].Write(verifyPraw)
 	}
 	if err != nil {
@@ -1336,7 +1324,7 @@ func (n *NodeTree) RefreshUpstreamSession() error {
 
 // Append Self to Node(Connect as a child node)
 // no locker
-func (n *NodeTree) AppendToNode(initpoint *ServerInitPoint, threads int) error {
+func (n *NodeTree) AppendToNode(initpoint *ServerInitPoint, threads int, context context.Context) error {
 	// connect to initpoint
 	err := n.connectToInitPoint(initpoint)
 	if err != nil {
@@ -1349,7 +1337,7 @@ func (n *NodeTree) AppendToNode(initpoint *ServerInitPoint, threads int) error {
 		return err
 	}
 	// Create reverse connection
-	err = n.CreateReverseConnection()
+	err = n.CreateReverseConnection(context)
 	if err != nil {
 		initpoint.Destroy()
 		return err
@@ -1361,7 +1349,7 @@ func (n *NodeTree) AppendToNode(initpoint *ServerInitPoint, threads int) error {
 		return err
 	}
 	for i := 0; i < threads-1; i++ {
-		err = n.CreateReverseConnection()
+		err = n.CreateReverseConnection(context)
 		if err != nil {
 			ThrowError(err)
 			return err
@@ -1407,7 +1395,7 @@ func (n *NodeTree) doneConnectionsToUpstream(thread int) error {
 // this method is used to create a reverse connection to the upstream node
 // receive Methods from Upstream Node
 // no locker
-func (n *NodeTree) CreateReverseConnection() error {
+func (n *NodeTree) CreateReverseConnection(ctx context.Context) error {
 	// for i := range n.RemoteInitPoint.conn.reverseConn {
 	// 	n.RemoteInitPoint.conn.reverseConn[i].Close()
 	// }
@@ -1440,7 +1428,7 @@ func (n *NodeTree) CreateReverseConnection() error {
 		return err
 	}
 	// enter message loop
-	go n.reverseConnMessageLoop(conn)
+	go n.reverseConnMessageLoop(conn, ctx)
 	// receive METHOD OK
 	reverseR := make([]byte, PacketBuffer)
 	num, err := conn.Read(reverseR)
@@ -1483,13 +1471,12 @@ func (n *NodeTree) GetIDInfo() error {
 	// Send Append Packet to Upstream
 	cu := n.RemoteInitPoint.conn.currentConn
 	n.RemoteInitPoint.conn.currentConn = (n.RemoteInitPoint.conn.currentConn + 1) % len(n.RemoteInitPoint.conn.rawConn)
+
+	n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
+	defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 	if n.RemoteInitPoint.conn.connectionType == 1 {
-		n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
-		defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 		_, err = n.RemoteInitPoint.conn.rawConn[cu].Write(QAppendPraw)
 	} else if n.RemoteInitPoint.conn.connectionType == 2 {
-		n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
-		defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 		_, err = n.RemoteInitPoint.conn.tlsConn[cu].Write(QAppendPraw)
 	}
 	if err != nil {
@@ -1575,13 +1562,11 @@ func (n *NodeTree) RemoveSelfFromUpstream() error {
 	// send remove packet to initpoint
 	cu := n.RemoteInitPoint.conn.currentConn
 	n.RemoteInitPoint.conn.currentConn = (n.RemoteInitPoint.conn.currentConn + 1) % len(n.RemoteInitPoint.conn.rawConn)
+	n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
+	defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 	if n.RemoteInitPoint.conn.connectionType == 1 {
-		n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
-		defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 		_, err = n.RemoteInitPoint.conn.rawConn[cu].Write(QRemovePraw)
 	} else if n.RemoteInitPoint.conn.connectionType == 2 {
-		n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
-		defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 		_, err = n.RemoteInitPoint.conn.tlsConn[cu].Write(QRemovePraw)
 	}
 	if err != nil {
@@ -1622,66 +1607,72 @@ func (n *NodeTree) RemoveSelfFromUpstream() error {
 
 // Message Loop
 // receive commands from upstream
-func (n *NodeTree) reverseConnMessageLoop(conn net.Conn) {
+func (n *NodeTree) reverseConnMessageLoop(conn net.Conn, ctx context.Context) {
 	defer conn.Close()
 	var RQP []byte
 	packet := make([]byte, PacketBuffer) // buffer
-	for {
-		// receive message from upstream
-		num, err := conn.Read(packet)
-		// data info log
-		TreeInfo.DataReceived += uint64(num)
-		TreeInfo.PacketReceived++
-		if err != nil {
-			ThrowError(err)
-			if isclosedconn(err) {
-				err := n.CreateReverseConnection()
-				if err != nil {
-					ThrowError(err)
-				}
-				return
-			}
-		}
-		RQP = append(RQP, packet[:num]...)
+	select {
+	case <-ctx.Done():
+		return
+	default:
 		for {
-			method, data, realLen, err := ResolvPacket(RQP)
+			// receive message from upstream
+			num, err := conn.Read(packet)
+			// data info log
+			TreeInfo.DataReceived += uint64(num)
+			TreeInfo.PacketReceived++
 			if err != nil {
-				if err == ErrPacketTooShort {
-					break // 数据不足，等待下次读取
-				}
 				ThrowError(err)
-				break // 其他错误跳出处理循环
-			}
-			if realLen > 32_000 { // 32KB
-				// drop packet
-				TreeInfo.PacketRecvDropped += 1
-				RQP = nil
-				break
-			}
-			RQP = RQP[realLen:]
-			switch method {
-			case pMethodBroadcast:
-				// handle broadcast packet
-				go func() {
-					err = n.handleBroadcastPacket(conn, data)
+				if isclosedconn(err) {
+					err := n.CreateReverseConnection(ctx)
 					if err != nil {
 						ThrowError(err)
 					}
-				}()
-			case pMethodTransferTo:
-				// handle transfer packet
-				go func() {
-					err = n.handleTransferToPacket(conn, data, true)
-					if err != nil {
-						ThrowError(err)
+					return
+				}
+			}
+			RQP = append(RQP, packet[:num]...)
+			for {
+				method, data, realLen, err := ResolvPacket(RQP)
+				if err != nil {
+					if err == ErrPacketTooShort {
+						break // 数据不足，等待下次读取
 					}
-				}()
-			default:
-				// dropped
-				TreeInfo.PacketRecvDropped++
+					ThrowError(err)
+					break // 其他错误跳出处理循环
+				}
+				if realLen > 32_000 { // 32KB
+					// drop packet
+					TreeInfo.PacketRecvDropped += 1
+					RQP = nil
+					break
+				}
+				RQP = RQP[realLen:]
+				switch method {
+				case pMethodBroadcast:
+					// handle broadcast packet
+					go func() {
+						err = n.handleBroadcastPacket(conn, data)
+						if err != nil {
+							ThrowError(err)
+						}
+					}()
+				case pMethodTransferTo:
+					// handle transfer packet
+					go func() {
+						err = n.handleTransferToPacket(conn, data, true)
+						if err != nil {
+							ThrowError(err)
+						}
+					}()
+				default:
+					// dropped
+					TreeInfo.PacketRecvDropped++
+				}
 			}
 		}
 	}
+
 }
 
 // No locker
@@ -1991,56 +1982,6 @@ func (n *NodeTree) sendToDownstream(ToUniqueID [IDlenth]byte, ChannelID [Channel
 		return fmt.Errorf("failed on sending: %s", string(data))
 	}
 	return nil
-}
-
-// Build Local Interface for receive local data then transfer to remote node
-func (n *NodeTree) BuildInterface() error {
-	iface, err := buildLocalInterface()
-	if err != nil {
-		return err
-	}
-	n.localInterface = iface
-	InterFace = iface
-	localIpv6, err := buildLocalIpv6Addr("fd00::", n.LocalUniqueId)
-	if err != nil {
-		return err
-	}
-	n.LocalIPv6 = net.ParseIP(localIpv6)
-	subnet := "fd00::/64"
-	_, Subnet, _ = net.ParseCIDR(subnet)
-	_, err = setupInterface(iface, n.LocalIPv6.To16().String(), subnet,
-		func(data []byte) {
-			onPacket(n, data)
-		})
-	if err != nil {
-		return err
-	}
-
-	// Done Init local Interface
-
-	// enter 0xFF 0xFF channel message loop
-	go n.ffffchannelLoop()
-	return nil
-}
-
-func (n *NodeTree) ffffchannelLoop() {
-	for {
-		data := <-n.LocalInitPoint.dataReadChannel[0xFFFF]
-		go onPacket(n, data.Data)
-	}
-}
-
-func (n *NodeTree) signalEvent() {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	// wait signal
-	<-sigChan
-	// fmt.Println("receive exit signal:", sig)
-	// clean up environment
-	if n.UpstreamSessionID != nil {
-		n.RemoveSelfFromUpstream()
-	}
-	os.Exit(0)
 }
 
 // reconnect connection
