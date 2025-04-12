@@ -79,13 +79,13 @@ IS_ROOT=${IS_ROOT:-no}
 # 初始化参数变量
 PARAMS=""
 
-if [ "${IS_ROOT}" == "yes" ] || [ "${IS_ROOT}" == "Yes" ]; then
+if [ "${IS_ROOT}" == "yes" ] || [ "${IS_ROOT}" == "Yes" ] || [ "${IS_ROOT}" == "y" ] || [ "${IS_ROOT}" == "Y" ]; then
     # 根节点，增加 -Root 参数
     PARAMS="${PARAMS} -Root"
 
-    # 3.2.1 询问本地监听地址与端口（默认：[::] 和 10888）
-    read -p "请输入本地监听地址 (默认：[::]): " LOCAL_ADDR
-    LOCAL_ADDR=${LOCAL_ADDR:-[::]}
+    # 3.2.1 询问本地监听地址与端口（默认：:: 和 10888）
+    read -p "请输入本地监听地址 (默认：::): " LOCAL_ADDR
+    LOCAL_ADDR=${LOCAL_ADDR:-::}
     read -p "请输入本地监听端口 (默认：10888): " LOCAL_PORT
     LOCAL_PORT=${LOCAL_PORT:-10888}
     PARAMS="${PARAMS} -l ${LOCAL_ADDR} -p ${LOCAL_PORT}"
@@ -105,9 +105,9 @@ else
     read -p "请输入远程端口 (port): " REMOTE_PORT
     PARAMS="${PARAMS} -H ${REMOTE_HOST} -P ${REMOTE_PORT}"
 
-    # 3.3.2 询问本地监听地址与端口（默认：[::] 和 10888）
-    read -p "请输入本地监听地址 (默认：[::]): " LOCAL_ADDR
-    LOCAL_ADDR=${LOCAL_ADDR:-[::]}
+    # 3.3.2 询问本地监听地址与端口（默认：:: 和 10888）
+    read -p "请输入本地监听地址 (默认：::): " LOCAL_ADDR
+    LOCAL_ADDR=${LOCAL_ADDR:-::}
     read -p "请输入本地监听端口 (默认：10888): " LOCAL_PORT
     LOCAL_PORT=${LOCAL_PORT:-10888}
     PARAMS="${PARAMS} -l ${LOCAL_ADDR} -p ${LOCAL_PORT}"
