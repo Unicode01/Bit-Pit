@@ -175,10 +175,10 @@
 
     <!-- 主体内容 -->
     <main>
-        <!-- BP Tree Map 数据展示 -->
+        <!-- BP Tree 数据展示 -->
         <section id="visualization">
             <div class="section-header">
-                <h2>BP Tree Map</h2>
+                <h2>BP Tree</h2>
                 <select id="dataView" class="data-select">
                     <option value="tree">树形视图</option>
                     <option value="raw">原始数据</option>
@@ -217,22 +217,19 @@
                 bottom: '20%',
                 symbol: 'emptyCircle',
                 orient: 'horizontal',
-                expandAndCollapse: false,
+                expandAndCollapse: true,
                 roam: true,
                 tooltip: {
                     formatter: `{c}`
                 },
                 label: {
-                    position: 'top',
-                    rotate: -90,
+                    position: 'left',
                     verticalAlign: 'middle',
-                    align: 'right',
-                    fontSize: 9
+                    align: 'right'
                 },
                 leaves: {
                     label: {
-                        position: 'bottom',
-                        rotate: -90,
+                        position: 'right',
                         verticalAlign: 'middle',
                         align: 'left'
                     }

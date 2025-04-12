@@ -53,3 +53,40 @@ func onPacket(n *NodeTree, data []byte) error {
 
 	return nil
 }
+
+// Build Local Interface for receive local data then transfer to remote node
+func BuildInterface(n *NodeTree) error {
+	iface, err := buildLocalInterface()
+	if err != nil {
+		return err
+	}
+	n.localInterface = iface
+	InterFace = iface
+	localIpv6, err := buildLocalIpv6Addr("fd00::", n.LocalUniqueId)
+	if err != nil {
+		return err
+	}
+	n.LocalIPv6 = net.ParseIP(localIpv6)
+	subnet := "fd00::/64"
+	_, Subnet, _ = net.ParseCIDR(subnet)
+	_, err = setupInterface(iface, n.LocalIPv6.To16().String(), subnet,
+		func(data []byte) {
+			onPacket(n, data)
+		})
+	if err != nil {
+		return err
+	}
+
+	// Done Init local Interface
+
+	// enter 0xFF 0xFF channel message loop
+	go ffffchannelLoop(n)
+	return nil
+}
+
+func ffffchannelLoop(n *NodeTree) {
+	for {
+		data := <-n.LocalInitPoint.dataReadChannel[0xFFFF]
+		go onPacket(n, data.Data)
+	}
+}

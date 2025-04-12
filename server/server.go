@@ -3,11 +3,15 @@ package server
 import (
 	"Bit-Pit/utils"
 	"Bit-Pit/web"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -130,17 +134,19 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, D
 	NodeTree.LocalIdMask = 8
 	NodeTree.ChildIDEndMask = 16
 	NodeTree.LocalInitPoint.SetTLSConfig(TLS, "", "", &tls.Config{})
-	_, err := NodeTree.InitLocalServerNode()
+	ctx, cancle := context.WithCancel(context.Background())
+	err := NodeTree.InitLocalServerNode(ctx)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("Success to init local server node\n")
 	utils.NodeID = NodeTree.LocalUniqueId
-	err = NodeTree.BuildInterface()
+	err = utils.BuildInterface(NodeTree)
 	fmt.Printf("Added local interface, ip: %s\n", NodeTree.LocalIPv6.String())
 	if err != nil {
 		panic(err)
 	}
+	go signalEvent(NodeTree, cancle)
 	// Load Web UI
 	go handleBroadcast(NodeTree)
 	go handleChannelMessage(NodeTree, [2]byte{0x00, 0x58})
@@ -165,13 +171,14 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 	Remote.NetWork = "tcp"
 	Remote.Token = Token
 	Remote.SetTLSConfig(TLS, "", "", &tls.Config{InsecureSkipVerify: true})
-	err := NodeTreeB.AppendToNode(Remote, threads)
+	ctx, cancle := context.WithCancel(context.Background())
+	err := NodeTreeB.AppendToNode(Remote, threads, ctx)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("Local Unique ID: %x\n", NodeTreeB.LocalUniqueId)
 	utils.NodeID = NodeTreeB.LocalUniqueId
-	err = NodeTreeB.BuildInterface()
+	err = utils.BuildInterface(NodeTreeB)
 	fmt.Printf("Added local interface, ip: %s\n", NodeTreeB.LocalIPv6.String())
 	if err != nil {
 		panic(err)
@@ -182,8 +189,9 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 		NodeTreeB.LocalInitPoint.NetWork = "tcp"
 		NodeTreeB.LocalInitPoint.Token = Token
 		NodeTreeB.LocalInitPoint.SetTLSConfig(TLS, "", "", &tls.Config{InsecureSkipVerify: true})
-		NodeTreeB.InitLocalServerNode()
+		NodeTreeB.InitLocalServerNode(ctx)
 	}
+	go signalEvent(NodeTreeB, cancle)
 	go handleBroadcast(NodeTreeB)
 	go handleChannelMessage(NodeTreeB, [2]byte{0x00, 0x58})
 	FillID(NodeTreeB.LocalUniqueId, NodeTreeB.LocalIPv6.String(), string(utils.Marshal()))
@@ -256,4 +264,18 @@ func buildMessage(method int, params []byte) []byte {
 	data[0] = byte(method)
 	copy(data[1:], params)
 	return data
+}
+
+func signalEvent(n *utils.NodeTree, cancle context.CancelFunc) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// wait signal
+	<-sigChan
+	// fmt.Println("receive exit signal:", sig)
+	// clean up environment
+	if n.UpstreamSessionID != nil {
+		n.RemoveSelfFromUpstream()
+	}
+	cancle()
+	os.Exit(0)
 }
