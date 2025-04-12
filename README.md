@@ -108,6 +108,14 @@ After running, the node's LocalID and private IPv6 address will be displayed.
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/install.sh)
 ```
+### Auto uninstall
+```bash
+bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/uninstall.sh)
+```
+### Auto update
+```bash
+bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/update.sh)
+```
 
 # F&Q
 * Is there a Windows version?
@@ -133,6 +141,6 @@ I need to frequently access ServerC2 from ServerC1, which would go through Serve
 
 # Thanks
 ## Server Providers
-**[Alice Networks](https://app.alice.ws/)**
-**[云曦幻镜](https://cloud.bffyun.com/)**
-**[Bage Networks](https://www.bagevm.com/)** 
+**[Alice Networks](https://app.alice.ws/)**  
+**[云曦幻镜](https://cloud.bffyun.com/)**  
+**[Bage Networks](https://www.bagevm.com/)**   

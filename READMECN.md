@@ -106,6 +106,14 @@ Usage of ./Bit-Pit:
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/install.sh)
 ```
+### 自动更新
+```bash
+bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/update.sh)
+```
+### 自动卸载
+```bash
+bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/uninstall.sh)
+```
 
 # F&Q
 * 能提供Windows版本吗?
@@ -127,6 +135,6 @@ ServerC1      ServerC2
 
 # 鸣谢
 ## 服务器提供商
-**[Alice Networks](https://app.alice.ws/)**
-**[云曦幻镜](https://cloud.bffyun.com/)**
-**[Bage Networks](https://www.bagevm.com/)**
+**[Alice Networks](https://app.alice.ws/)**  
+**[云曦幻镜](https://cloud.bffyun.com/)**  
+**[Bage Networks](https://www.bagevm.com/)**  
