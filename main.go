@@ -19,6 +19,7 @@ var (
 	DisableWebServer bool
 	Threads          int
 	DEBUG            bool
+	WebVisitToken    string
 )
 
 func main() {
@@ -34,9 +35,9 @@ func main() {
 		if Token == "" {
 			panic("Token is required for node")
 		}
-		server.InitAsRoot(LocalHost, LocalPort, Token, [8]byte{0xc1}, TLS)
+		server.InitAsRoot(LocalHost, LocalPort, Token, [8]byte{0xc1}, TLS, DisableWebServer, WebVisitToken)
 	} else {
-		server.InitAsChild(RemoteHost, LocalHost, RemotePort, Token, TLS, Threads)
+		server.InitAsChild(RemoteHost, LocalHost, RemotePort, Token, TLS, Threads, DisableWebServer, WebVisitToken)
 	}
 }
 
@@ -49,7 +50,11 @@ func ReadConifg() {
 	flag.StringVar(&LocalHost, "l", "::", "local host")
 	flag.StringVar(&Token, "t", "", "token")
 	flag.BoolVar(&DisableWebServer, "dws", false, "disable web server")
+	flag.StringVar(&WebVisitToken, "webtoken", "", "web visit token")
 	flag.BoolVar(&DEBUG, "debug", false, "debug mode")
 	flag.IntVar(&Threads, "th", 1, "Threads for connection")
 	flag.Parse()
+	if WebVisitToken == "" {
+		WebVisitToken = Token
+	}
 }

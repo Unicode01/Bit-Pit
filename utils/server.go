@@ -105,6 +105,7 @@ type connection struct {
 	tlsConn             []*tls.Conn
 	currentReverseConn  int
 	rawListener         net.Listener
+	reconnecting        bool
 }
 
 type ServerInitPoint struct {
@@ -633,6 +634,10 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte) error {
 
 	// session check passed, send broadcast packet to upstream node (exclude from)
 	if n.UpstreamSessionID != nil && !flagFromUpstream { // not upstream broadcast
+		// check session
+		if n.UpstreamSessionID.TimeoutStamp < uint64(time.Now().Unix()) || n.UpstreamSessionID.TTL < 1 {
+			n.RefreshUpstreamSession()
+		}
 		// generate broadcast packet
 		QbroadcastP := &QBroadcastPacket{
 			SrcNodeID: broadcastP.SrcNodeID,
@@ -976,7 +981,7 @@ func ThrowError(errorinfo error) {
 }
 
 func isclosedconn(err error) bool {
-	if err == io.EOF || strings.Contains(err.Error(), "use of closed network connection") || strings.Contains(err.Error(), "broken pipe") || strings.Contains(err.Error(), "connection reset by peer") {
+	if err == io.EOF || strings.Contains(err.Error(), "use of closed network connection") || strings.Contains(err.Error(), "broken pipe") || strings.Contains(err.Error(), "connection reset by peer") || strings.Contains(err.Error(), "software caused connection abort") || strings.Contains(err.Error(), "connection timed out") || strings.Contains(err.Error(), "no route to host") {
 		return true
 	}
 	return false
@@ -1413,21 +1418,13 @@ func (n *NodeTree) CreateReverseConnection() error {
 	if err != nil {
 		return err
 	}
-	cu := 0
 	if n.RemoteInitPoint.tlsSettings.Enabled {
 		tlsConn := tls.Client(conn, n.RemoteInitPoint.tlsSettings.TLSConfig)
 		err = tlsConn.Handshake()
 		if err != nil {
 			return err
 		}
-		n.RemoteInitPoint.conn.reverseConn = append(n.RemoteInitPoint.conn.reverseConn, tlsConn)
-		n.RemoteInitPoint.conn.reverseWriteLock = append(n.RemoteInitPoint.conn.reverseWriteLock, new(sync.Mutex))
-		cu = len(n.RemoteInitPoint.conn.reverseConn) - 1
-
-	} else {
-		n.RemoteInitPoint.conn.reverseConn = append(n.RemoteInitPoint.conn.reverseConn, conn)
-		n.RemoteInitPoint.conn.reverseWriteLock = append(n.RemoteInitPoint.conn.reverseWriteLock, new(sync.Mutex))
-		cu = len(n.RemoteInitPoint.conn.reverseConn) - 1
+		conn = tlsConn
 	}
 	// send reverse conn packet
 	QReverseP := &QReverseConnPacket{
@@ -1438,15 +1435,15 @@ func (n *NodeTree) CreateReverseConnection() error {
 	if err != nil {
 		return err
 	}
-	_, err = n.RemoteInitPoint.conn.reverseConn[cu].Write(QReversePraw)
+	_, err = conn.Write(QReversePraw)
 	if err != nil {
 		return err
 	}
 	// enter message loop
-	go n.reverseConnMessageLoop(n.RemoteInitPoint.conn.reverseConn[cu])
+	go n.reverseConnMessageLoop(conn)
 	// receive METHOD OK
 	reverseR := make([]byte, PacketBuffer)
-	num, err := n.RemoteInitPoint.conn.reverseConn[cu].Read(reverseR)
+	num, err := conn.Read(reverseR)
 	if err != nil {
 		return err
 	}
@@ -1638,21 +1635,11 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn) {
 		if err != nil {
 			ThrowError(err)
 			if isclosedconn(err) {
-				// connection err, destroy connection
-				cu := 0
-				for i, c := range n.RemoteInitPoint.conn.reverseConn {
-					if c == conn {
-						cu = i
-					}
+				err := n.CreateReverseConnection()
+				if err != nil {
+					ThrowError(err)
 				}
-				n.RemoteInitPoint.conn.reverseConn = append(n.RemoteInitPoint.conn.reverseConn[:cu], n.RemoteInitPoint.conn.reverseConn[cu+1:]...)
-				n.RemoteInitPoint.conn.reverseWriteLock = append(n.RemoteInitPoint.conn.reverseWriteLock[:cu], n.RemoteInitPoint.conn.reverseWriteLock[cu+1:]...)
-				if len(n.RemoteInitPoint.conn.reverseConn) < 1 {
-					n.RemoteInitPoint.conn.currentReverseConn = 0
-					break
-				}
-				n.RemoteInitPoint.conn.currentReverseConn = (n.RemoteInitPoint.conn.currentReverseConn + 1) % len(n.RemoteInitPoint.conn.reverseConn) // avoid index out of range
-				break
+				return
 			}
 		}
 		RQP = append(RQP, packet[:num]...)
@@ -1697,7 +1684,6 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn) {
 	}
 }
 
-// this func will use 1 TTL
 // No locker
 // if ChannelID == 0, it means broadcast packet
 func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth]byte, data []byte, src_opt ...[IDlenth]byte) error {
@@ -1808,12 +1794,6 @@ func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth
 		// send to downstream
 		return n.sendToDownstream(ToUniqueID, ChannelID, data, src_id, true)
 	} else {
-		if n.UpstreamSessionID.TTL < 1 || n.UpstreamSessionID.TimeoutStamp < uint64(time.Now().Unix()) { //timeout or TTL == 0
-			// refresh session
-			n.RefreshUpstreamSession()
-		}
-		// reduce TTL
-		n.UpstreamSessionID.TTL--
 		// send to upstream
 		return n.sendToUpstream(ToUniqueID, ChannelID, data, src_id, true)
 	}
@@ -1827,6 +1807,7 @@ func (n *NodeTree) ReadFrom(ChannelID [ChannelIDMaxLenth]byte) (int, []byte, [ID
 	return message.MessageType, message.Data, message.SrcID
 }
 
+// this func will use 1 TTL
 // child of SendTO
 // LOCKER
 func (n *NodeTree) sendToUpstream(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth]byte, data []byte, srcid [IDlenth]byte, noneedresp bool) error {
@@ -1866,6 +1847,9 @@ func (n *NodeTree) sendToUpstream(ToUniqueID [IDlenth]byte, ChannelID [ChannelID
 		countBytes := 0
 		for countBytes < len(sendPraw) {
 			countBytes, err = n.RemoteInitPoint.conn.rawConn[cu].Write(sendPraw)
+			if err != nil {
+				break
+			}
 			sentBytes += countBytes
 		}
 	} else if n.RemoteInitPoint.conn.connectionType == 2 {
@@ -1873,14 +1857,17 @@ func (n *NodeTree) sendToUpstream(ToUniqueID [IDlenth]byte, ChannelID [ChannelID
 		countBytes := 0
 		for countBytes < len(sendPraw) {
 			countBytes, err = n.RemoteInitPoint.conn.tlsConn[cu].Write(sendPraw)
+			if err != nil {
+				break
+			}
 			sentBytes += countBytes
 		}
 	}
 	if err != nil {
 		if isclosedconn(err) {
-			if n.reconnect(cu, false, 0) {
-				n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
-				return n.sendToUpstream(ToUniqueID, ChannelID, data, srcid, noneedresp) // 重试
+			if n.reconnect(cu, 0) {
+				ThrowError(err)
+				return err
 			}
 		}
 		ThrowError(err)
@@ -1966,9 +1953,18 @@ func (n *NodeTree) sendToDownstream(ToUniqueID [IDlenth]byte, ChannelID [Channel
 	countBytes := 0
 	for countBytes < len(sendPraw) {
 		countBytes, err = downstream.conn.reverseConn[cu].Write(sendPraw)
+		if err != nil {
+			break
+		}
 		sentBytes += countBytes
 	}
 	if err != nil {
+		if isclosedconn(err) {
+			// remove downstream reverse connection
+			downstream.conn.reverseConn[cu].Close()
+			downstream.conn.reverseConn = append(downstream.conn.reverseConn[:cu], downstream.conn.reverseConn[cu+1:]...)
+			downstream.conn.currentReverseConn = 0
+		}
 		ThrowError(err)
 		return err
 	}
@@ -2049,109 +2045,43 @@ func (n *NodeTree) signalEvent() {
 
 // reconnect connection
 // if success it will return true, otherwise it will return false
-func (n *NodeTree) reconnect(connIndex int, reverseconn bool, retry int) bool {
+func (n *NodeTree) reconnect(connIndex int, retry int) bool {
+	if n.RemoteInitPoint.conn.reconnecting {
+		return false
+	}
+	n.RemoteInitPoint.conn.reconnecting = true
+	defer func() { n.RemoteInitPoint.conn.reconnecting = false }()
 	if retry > MaxReconnectRetry {
 		return false
 	}
 	if !AutoReconnect || connIndex < 0 {
 		return false
 	}
-	if reverseconn {
-		if connIndex >= len(n.RemoteInitPoint.conn.reverseConn) {
-			return false
-		}
-	} else {
-		if connIndex >= len(n.RemoteInitPoint.conn.rawConn) {
-			return false
-		}
+
+	if connIndex >= len(n.RemoteInitPoint.conn.rawConn) {
+		return false
 	}
 
+	conn := n.RemoteInitPoint.conn.rawConn[connIndex]
 	// close old connection
-	var conn net.Conn
-	if reverseconn {
-		conn = n.RemoteInitPoint.conn.reverseConn[connIndex]
-	} else {
-		conn = n.RemoteInitPoint.conn.rawConn[connIndex]
-	}
 	conn.Close()
 
 	newconn, err := net.Dial(n.RemoteInitPoint.NetWork, net.JoinHostPort(n.RemoteInitPoint.IpAddr, fmt.Sprintf("%d", n.RemoteInitPoint.Port)))
 	if err != nil {
-		return n.reconnect(connIndex, reverseconn, retry+1)
+		time.Sleep(3 * time.Second)
+		return n.reconnect(connIndex, retry+1)
 	}
 
-	if reverseconn {
-		if n.RemoteInitPoint.tlsSettings.Enabled {
-			tlsconn := tls.Client(newconn, &tls.Config{InsecureSkipVerify: true})
-			if err = tlsconn.Handshake(); err != nil {
-				return n.reconnect(connIndex, reverseconn, retry+1)
-			}
-			// generate QReverseConnPacket
-			QReverseP := &QReverseConnPacket{
-				Session:  n.UpstreamSessionID.SessionID,
-				UniqueID: n.LocalUniqueId,
-			}
-			QReversePraw, err := QReverseP.Marshal()
-			if err != nil {
-				return false
-			}
-			_, err = tlsconn.Write(QReversePraw)
-			if err != nil {
-				return n.reconnect(connIndex, reverseconn, retry+1)
-			}
-			reverseR := make([]byte, PacketBuffer)
-			num, err := tlsconn.Read(reverseR)
-			if err != nil {
-				return n.reconnect(connIndex, reverseconn, retry+1)
-			}
-			reverseR = reverseR[:num]
-			method, _, _, err := ResolvPacket(reverseR)
-			if err != nil || method != pMethodOK {
-				return n.reconnect(connIndex, reverseconn, retry+1)
-			}
-			// Update connection
-			n.RemoteInitPoint.conn.reverseConn[connIndex] = tlsconn
-			n.RemoteInitPoint.conn.rawConn[connIndex] = newconn
-			// enter message loop
-			go n.reverseConnMessageLoop(tlsconn)
-			return true
-		} else {
-			// No TLS
-			QReverseP := &QReverseConnPacket{
-				Session:  n.UpstreamSessionID.SessionID,
-				UniqueID: n.LocalUniqueId,
-			}
-			QReversePraw, err := QReverseP.Marshal()
-			if err != nil {
-				return false
-			}
-			_, err = newconn.Write(QReversePraw)
-			if err != nil {
-				return n.reconnect(connIndex, reverseconn, retry+1)
-			}
-			reverseR := make([]byte, PacketBuffer)
-			num, err := newconn.Read(reverseR)
-			if err != nil {
-				return n.reconnect(connIndex, reverseconn, retry+1)
-			}
-			reverseR = reverseR[:num]
-			method, _, _, err := ResolvPacket(reverseR)
-			if err != nil || method != pMethodOK {
-				return n.reconnect(connIndex, reverseconn, retry+1)
-			}
-			n.RemoteInitPoint.conn.rawConn[connIndex] = newconn
-			go n.reverseConnMessageLoop(newconn)
-			return true
+	if n.RemoteInitPoint.tlsSettings.Enabled {
+		tlsconn := tls.Client(newconn, &tls.Config{InsecureSkipVerify: true})
+		if err = tlsconn.Handshake(); err != nil {
+			time.Sleep(3 * time.Second)
+			return n.reconnect(connIndex, retry+1)
 		}
-	} else {
-		if n.RemoteInitPoint.tlsSettings.Enabled {
-			tlsconn := tls.Client(newconn, &tls.Config{InsecureSkipVerify: true})
-			if err = tlsconn.Handshake(); err != nil {
-				return n.reconnect(connIndex, reverseconn, retry+1)
-			}
-			n.RemoteInitPoint.conn.tlsConn[connIndex] = tlsconn
-		}
-		n.RemoteInitPoint.conn.rawConn[connIndex] = newconn
-		return true
+		n.RemoteInitPoint.conn.tlsConn[connIndex] = tlsconn
 	}
+	n.RemoteInitPoint.conn.rawConn[connIndex] = newconn
+
+	return true
+
 }

@@ -59,7 +59,7 @@ Examples:
 # Features to Improve
 * Complete routing visualization  
 * Custom certificate support  
-* Improve auto-reconnect functionality [+]  
+* Improve auto-reconnect functionality [√]  
 * Data statistics [+]  
 * Architecture optimization and performance enhancement  
 * Smart routing optimization  
