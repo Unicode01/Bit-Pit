@@ -73,6 +73,13 @@ var Tree = &NTree{
 	children: make(map[string]*NTree),
 }
 
+func ClearInfo() {
+	Tree = &NTree{
+		Name:     "root",
+		children: make(map[string]*NTree),
+	}
+}
+
 func FillID(id [8]byte, value string, info string) {
 	current := Tree
 	for i := 0; i < 8; i++ {
@@ -113,7 +120,7 @@ func FillID(id [8]byte, value string, info string) {
 	}
 }
 
-func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool) {
+func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, DisableWebServer bool, WebVisitToken string) {
 	NodeTree := utils.NewNodeTree()
 	NodeTree.LocalInitPoint.IpAddr = Host
 	NodeTree.LocalInitPoint.Port = Port
@@ -140,14 +147,17 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool) {
 	FillID(RootID, NodeTree.LocalIPv6.String(), string(utils.Marshal()))
 	go func() {
 		for {
+			ClearInfo()
 			SendGetInfoBroadcast(NodeTree)
 			time.Sleep(10 * time.Second)
 		}
 	}()
-	web.InitWebServer(Port+1, Token)
+	if !DisableWebServer {
+		web.InitWebServer(Port+1, WebVisitToken)
+	}
 }
 
-func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool, threads int) {
+func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool, threads int, DisableWebServer bool, WebVisitToken string) {
 	NodeTreeB := utils.NewNodeTree()
 	Remote := utils.NewServerInitPoint()
 	Remote.IpAddr = Host
@@ -183,7 +193,9 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 			time.Sleep(10 * time.Second)
 		}
 	}()
-	web.InitWebServer(Port+1, Token)
+	if !DisableWebServer {
+		web.InitWebServer(Port+1, WebVisitToken)
+	}
 	// if err != nil {
 	// 	panic(err)
 	// }

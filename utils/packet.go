@@ -291,14 +291,25 @@ func (p *QReverseConnPacket) Unmarshal(data []byte) error {
 type QDataTransferTo struct {
 	SessionID [8]byte       // Session ID for Query
 	SrcNodeID [IDlenth]byte // Source Node ID
+	NoResp    bool
 	Data      []byte
 	DstNodeID [IDlenth]byte           // Destination Node ID
 	ChannelID [ChannelIDMaxLenth]byte // like...Port?
-	ExtraData []byte                  // Extra data for application layer
-	NoResp    bool
+	ExtraData []byte                  // Extra data for specific protocol
 }
 
 func (p *QDataTransferTo) Marshal() ([]byte, error) {
+	// 8 bytes header*
+	// 8 bytes session ID
+	// 8 bytes src node ID
+	// 8 bytes dst node ID
+	// 2 bytes channel ID
+	// 4 bytes datalen
+	// 4 bytes extralen
+	// 1 byte noResp
+	// data
+	// extra data
+
 	// Calculate total length
 	totalLen := 4 + 4 //header length
 	// 4 bytes method code
@@ -327,11 +338,6 @@ func (p *QDataTransferTo) Marshal() ([]byte, error) {
 	binary.LittleEndian.PutUint32(transferP[offset:], uint32(len(p.ExtraData)))
 	offset += 4
 
-	// Copy variable-size fields
-	copy(transferP[offset:], p.Data)
-	offset += len(p.Data)
-	copy(transferP[offset:], p.ExtraData)
-	offset += len(p.ExtraData)
 	var noRespByte byte
 	if p.NoResp {
 		noRespByte = 1
@@ -339,6 +345,13 @@ func (p *QDataTransferTo) Marshal() ([]byte, error) {
 		noRespByte = 0
 	}
 	copy(transferP[offset:], []byte{noRespByte})
+	offset += 1
+
+	// Copy variable-size fields
+	copy(transferP[offset:], p.Data)
+	offset += len(p.Data)
+	copy(transferP[offset:], p.ExtraData)
+	offset += len(p.ExtraData)
 
 	return transferP, nil
 }
@@ -348,9 +361,14 @@ func (p *QDataTransferTo) Unmarshal(data []byte) error {
 	// 8 bytes src node ID
 	// 8 bytes dst node ID
 	// 2 bytes channel ID
+	// 4 bytes datalen
+	// 4 bytes extralen
+	// 1 byte noResp
+	// data
+	// extra data
 
 	// Check minimum length
-	if len(data) < 8+IDlenth*2+ChannelIDMaxLenth+8 {
+	if len(data) < 8+IDlenth*2+ChannelIDMaxLenth+8+1 {
 		return ErrInvalidData
 	}
 
@@ -371,8 +389,10 @@ func (p *QDataTransferTo) Unmarshal(data []byte) error {
 	extraDataLen := binary.LittleEndian.Uint32(data[offset:]) // 4
 	offset += 4
 
+	p.NoResp = bytes.Equal(data[offset:offset+1], []byte{1})
+	offset += 1
 	// Check total length
-	if len(data) < offset+int(dataLen)+int(extraDataLen)+1 {
+	if len(data) < offset+int(dataLen)+int(extraDataLen) {
 		return ErrInvalidData
 	}
 
@@ -381,6 +401,6 @@ func (p *QDataTransferTo) Unmarshal(data []byte) error {
 	offset += int(dataLen)
 	p.ExtraData = data[offset : offset+int(extraDataLen)]
 	offset += int(extraDataLen)
-	p.NoResp = bytes.Equal(data[offset:offset+1], []byte{1})
+
 	return nil
 }
