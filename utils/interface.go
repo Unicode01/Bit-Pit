@@ -55,21 +55,24 @@ func onPacket(n *NodeTree, data []byte) error {
 }
 
 // Build Local Interface for receive local data then transfer to remote node
-func BuildInterface(n *NodeTree) error {
-	iface, err := buildLocalInterface()
+func BuildInterface(n *NodeTree, subnet string) error {
+	ip, CIDR, err := net.ParseCIDR(subnet)
 	if err != nil {
 		return err
 	}
+	Subnet = CIDR
+	iface, err := buildLocalInterface(fmt.Sprintf("BPTUN-%x", CIDR.IP.To16()))
 	n.localInterface = iface
 	InterFace = iface
-	localIpv6, err := buildLocalIpv6Addr("fd00::", n.LocalUniqueId)
+	if err != nil {
+		return err
+	}
+	localIpv6, err := buildLocalIpv6Addr(ip, n.LocalUniqueId)
 	if err != nil {
 		return err
 	}
 	n.LocalIPv6 = net.ParseIP(localIpv6)
-	subnet := "fd00::/64"
-	_, Subnet, _ = net.ParseCIDR(subnet)
-	_, err = setupInterface(iface, n.LocalIPv6.To16().String(), subnet,
+	_, err = setupInterface(iface, n.LocalIPv6.To16().String(), CIDR,
 		func(data []byte) {
 			onPacket(n, data)
 		})

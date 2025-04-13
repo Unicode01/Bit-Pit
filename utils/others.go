@@ -76,19 +76,18 @@ func GenerateSelfSignedCert() (certPEM string, keyPEM string, err error) {
 	return certPEM, keyPEM, nil
 }
 
-func buildLocalIpv6Addr(Prefix string, LocalID [IDlenth]byte) (string, error) {
+func buildLocalIpv6Addr(IPPrefox net.IP, LocalID [IDlenth]byte) (string, error) {
 	// 解析输入的IPv6前缀
-	ip := net.ParseIP(Prefix)
-	if ip == nil {
+	if IPPrefox == nil {
 		return "", fmt.Errorf("invalid IPv6 prefix format")
 	}
 
 	// 确保是IPv6地址且不是IPv4映射地址
-	if ip.To4() != nil {
+	if IPPrefox.To4() != nil {
 		return "", fmt.Errorf("prefix is an IPv4 address")
 	}
 
-	ipv6 := ip.To16()
+	ipv6 := IPPrefox.To16()
 	if ipv6 == nil {
 		return "", fmt.Errorf("prefix is not a valid IPv6 address")
 	}
@@ -106,19 +105,19 @@ func buildLocalIpv6Addr(Prefix string, LocalID [IDlenth]byte) (string, error) {
 	return net.IP(newAddr[:]).String(), nil
 }
 
-func buildLocalInterface() (*water.Interface, error) {
+func buildLocalInterface(interfaceName string) (*water.Interface, error) {
 	ifce, err := water.New(water.Config{
 		DeviceType: water.TUN,
 		PlatformSpecificParams: water.PlatformSpecificParams{
-			Name:    "BPTUN", // 自定义接口名称
-			Persist: false,   // 关闭持久化
+			Name:    interfaceName, // 自定义接口名称
+			Persist: false,         // 关闭持久化
 
 		},
 	})
 	return ifce, err
 }
 
-func setupInterface(iface *water.Interface, ip string, Prefix string, funcOnReceive func(data []byte)) (cancle context.CancelFunc, err error) {
+func setupInterface(iface *water.Interface, ip string, CIDR *net.IPNet, funcOnReceive func(data []byte)) (cancle context.CancelFunc, err error) {
 	link, err := netlink.LinkByName(iface.Name())
 	if err != nil {
 		return nil, fmt.Errorf("error getting link:%s", err)
@@ -139,12 +138,8 @@ func setupInterface(iface *water.Interface, ip string, Prefix string, funcOnRece
 	}
 
 	// set IPv6 route
-	_, dstNet, err := net.ParseCIDR(Prefix)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing prefix:%s", err)
-	}
 	route := &netlink.Route{
-		Dst:       dstNet,
+		Dst:       CIDR,
 		LinkIndex: link.Attrs().Index,
 	}
 	if err = netlink.RouteAdd(route); err != nil {

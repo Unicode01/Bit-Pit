@@ -83,44 +83,54 @@ if [ "${IS_ROOT}" == "yes" ] || [ "${IS_ROOT}" == "Yes" ] || [ "${IS_ROOT}" == "
     # 根节点，增加 -Root 参数
     PARAMS="${PARAMS} -Root"
 
-    # 3.2.1 询问本地监听地址与端口（默认：:: 和 10888）
+
     read -p "请输入本地监听地址 (默认：::): " LOCAL_ADDR
     LOCAL_ADDR=${LOCAL_ADDR:-::}
     read -p "请输入本地监听端口 (默认：10888): " LOCAL_PORT
     LOCAL_PORT=${LOCAL_PORT:-10888}
     PARAMS="${PARAMS} -l ${LOCAL_ADDR} -p ${LOCAL_PORT}"
 
-    # 3.2.2 询问 token
+
     read -p "请输入 token 值: " TOKEN
     PARAMS="${PARAMS} -t ${TOKEN}"
 
-    # 3.2.3 是否启用 TLS
+
     read -p "是否启用 TLS (yes/no, 默认 no)? " ENABLE_TLS
     if [ "${ENABLE_TLS}" == "yes" ] || [ "${ENABLE_TLS}" == "Yes" ]  || [ "${ENABLE_TLS}" == "y" ] || [ "${ENABLE_TLS}" == "Y" ]; then
         PARAMS="${PARAMS} -T"
     fi
+    
+    read -p "请输入内网IPv6 CIDR (默认：fd00::/64): " IPv6_CIDR
+    IPv6_CIDR=${IPv6_CIDR:-fd00::/64}
+    PARAMS="${PARAMS} -6 ${IPv6_CIDR}"
+
 else
-    # 3.3.1 如果不是根节点，则询问远程地址（host 与 port）
+
     read -p "请输入远程地址（host）: " REMOTE_HOST
     read -p "请输入远程端口 (port): " REMOTE_PORT
     PARAMS="${PARAMS} -H ${REMOTE_HOST} -P ${REMOTE_PORT}"
 
-    # 3.3.2 询问本地监听地址与端口（默认：:: 和 10888）
+
     read -p "请输入本地监听地址 (默认：::): " LOCAL_ADDR
     LOCAL_ADDR=${LOCAL_ADDR:-::}
     read -p "请输入本地监听端口 (默认：10888): " LOCAL_PORT
     LOCAL_PORT=${LOCAL_PORT:-10888}
     PARAMS="${PARAMS} -l ${LOCAL_ADDR} -p ${LOCAL_PORT}"
 
-    # 3.3.3 询问 token
+
     read -p "请输入 token 值: " TOKEN
     PARAMS="${PARAMS} -t ${TOKEN}"
 
-    # 3.3.4 是否启用 TLS
+
     read -p "是否启用 TLS (yes/no, 默认 no)? " ENABLE_TLS
     if [ "${ENABLE_TLS}" == "yes" ] || [ "${ENABLE_TLS}" == "Yes" ] || [ "${ENABLE_TLS}" == "y" ] || [ "${ENABLE_TLS}" == "Y" ]; then
         PARAMS="${PARAMS} -T"
     fi
+
+    read -p "请输入内网IPv6 CIDR (默认：fd00::/64): " IPv6_CIDR
+    IPv6_CIDR=${IPv6_CIDR:-fd00::/64}
+    PARAMS="${PARAMS} -6 ${IPv6_CIDR}"
+
 fi
 
 echo "运行参数: ${PARAMS}"

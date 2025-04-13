@@ -128,7 +128,7 @@ bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/
   * Currently, only visual inspection is supported. You can view routing info by accessing `http://<IP>:<ListenPort+1>` in a browser.
 
 * The logs show many connection errors. Should I be concerned?
-  * No need to worry. These are normal connection errors and can be safely ignored.
+  * No need to worry. It will automatically reconnect. However, if connection errors occur frequently, you may consider checking your network environment or firewall settings
 
 * If I have a routing structure like:
 ```
