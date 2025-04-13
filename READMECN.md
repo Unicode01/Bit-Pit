@@ -123,7 +123,7 @@ bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/
 * 如何查看路由信息
   * 目前仅支持可视化,可通过浏览器访问 `http://<IP>:<ListenPort+1>` 查看路由信息
 * 日志输出了很多连接错误,需要管吗?
-  * 正常来说不需要管,是正常的连接错误,可以忽略
+  * 正常来说不需要管,连接出错会自动重连,但如果频繁出现连接错误,可以考虑检查下网络环境或防火墙设置
 * 如果我有这样的一个路由:   
 ```
          ServerR  

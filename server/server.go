@@ -124,7 +124,7 @@ func FillID(id [8]byte, value string, info string) {
 	}
 }
 
-func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, DisableWebServer bool, WebVisitToken string) {
+func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, DisableWebServer bool, WebVisitToken string, subnet string) {
 	NodeTree := utils.NewNodeTree()
 	NodeTree.LocalInitPoint.IpAddr = Host
 	NodeTree.LocalInitPoint.Port = Port
@@ -141,7 +141,7 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, D
 	}
 	fmt.Printf("Success to init local server node\n")
 	utils.NodeID = NodeTree.LocalUniqueId
-	err = utils.BuildInterface(NodeTree)
+	err = utils.BuildInterface(NodeTree, subnet)
 	fmt.Printf("Added local interface, ip: %s\n", NodeTree.LocalIPv6.String())
 	if err != nil {
 		panic(err)
@@ -163,7 +163,7 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, D
 	}
 }
 
-func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool, threads int, DisableWebServer bool, WebVisitToken string) {
+func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool, threads int, DisableWebServer bool, WebVisitToken string, subnet string) {
 	NodeTreeB := utils.NewNodeTree()
 	Remote := utils.NewServerInitPoint()
 	Remote.IpAddr = Host
@@ -178,7 +178,7 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 	}
 	fmt.Printf("Local Unique ID: %x\n", NodeTreeB.LocalUniqueId)
 	utils.NodeID = NodeTreeB.LocalUniqueId
-	err = utils.BuildInterface(NodeTreeB)
+	err = utils.BuildInterface(NodeTreeB, subnet)
 	fmt.Printf("Added local interface, ip: %s\n", NodeTreeB.LocalIPv6.String())
 	if err != nil {
 		panic(err)
