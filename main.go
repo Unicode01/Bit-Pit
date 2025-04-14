@@ -3,8 +3,6 @@ package main
 import (
 	"Bit-Pit/server"
 	"flag"
-	"log"
-	"syscall"
 )
 
 var (
@@ -24,12 +22,12 @@ var (
 )
 
 func main() {
-	// checkroot
-	func() {
-		if syscall.Getuid() != 0 {
-			log.Fatal("This program must be run as root")
-		}
-	}()
+	// // checkroot
+	// func() {
+	// 	if syscall.Getuid() != 0 {
+	// 		log.Fatal("This program must be run as root")
+	// 	}
+	// }()
 
 	ReadConifg()
 	if RootNode {

@@ -105,46 +105,6 @@ func buildLocalIpv6Addr(IPPrefox net.IP, LocalID [IDlenth]byte) (string, error) 
 	return net.IP(newAddr[:]).String(), nil
 }
 
-func setupInterface(iface *water.Interface, ip string, CIDR *net.IPNet, funcOnReceive func(data []byte)) (cancle context.CancelFunc, err error) {
-	link, err := netlink.LinkByName(iface.Name())
-	if err != nil {
-		return nil, fmt.Errorf("error getting link:%s", err)
-	}
-	// set IPv6 address
-	addr, err := netlink.ParseAddr(ip + "/64")
-	if err != nil {
-		return nil, fmt.Errorf("error parsing IP address:%s", err)
-	}
-	err = netlink.AddrAdd(link, addr)
-	if err != nil {
-		return nil, fmt.Errorf("error adding IP address:%s", err)
-	}
-	// start up the interface
-	err = netlink.LinkSetUp(link)
-	if err != nil {
-		return nil, fmt.Errorf("error setting up interface:%s", err)
-	}
-
-	// set IPv6 route
-	route := &netlink.Route{
-		Dst:       CIDR,
-		LinkIndex: link.Attrs().Index,
-	}
-	if err = netlink.RouteAdd(route); err != nil {
-		return nil, fmt.Errorf("error adding route:%s", err)
-	}
-
-	// Set MTU
-	err = netlink.LinkSetMTU(link, 9000)
-	if err != nil {
-		return nil, fmt.Errorf("error setting MTU:%s", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go handlePackets(ctx, iface, funcOnReceive)
-	return cancel, nil
-}
-
 func handlePackets(ctx context.Context, ifce *water.Interface, funcOnReceive func(data []byte)) {
 	packet := make([]byte, 9000)
 	for {
