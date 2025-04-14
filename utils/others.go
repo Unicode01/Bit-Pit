@@ -105,18 +105,6 @@ func buildLocalIpv6Addr(IPPrefox net.IP, LocalID [IDlenth]byte) (string, error) 
 	return net.IP(newAddr[:]).String(), nil
 }
 
-func buildLocalInterface(interfaceName string) (*water.Interface, error) {
-	ifce, err := water.New(water.Config{
-		DeviceType: water.TUN,
-		PlatformSpecificParams: water.PlatformSpecificParams{
-			Name:    interfaceName, // 自定义接口名称
-			Persist: false,         // 关闭持久化
-
-		},
-	})
-	return ifce, err
-}
-
 func setupInterface(iface *water.Interface, ip string, CIDR *net.IPNet, funcOnReceive func(data []byte)) (cancle context.CancelFunc, err error) {
 	link, err := netlink.LinkByName(iface.Name())
 	if err != nil {

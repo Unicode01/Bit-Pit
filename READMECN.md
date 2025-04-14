@@ -116,14 +116,18 @@ bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/
 ```
 
 # F&Q
-* 能提供Windows版本吗?
-  * 由于Golang库的限制,目前仅提供Linux版本,若以后更换底层库或移植到Windows,可能会有所改动
+* 为什么他在Windows平台无法运行?
+  * 要在 Windows 上使用它，您需要安装 [Tap 驱动程序](https://github.com/OpenVPN/tap-windows6) 或适用于 Windows 的 [OpenVPN 客户端](https://github.com/OpenVPN/openvpn) 。
+
 * 内网网卡的PPS太低怎么办
   * 建议创建子节点时适当增加线程数,由于基础协议是TCP基础上的,所以并发量不会很高,不适用于pps太高的场景,会导致网络拥塞
+
 * 如何查看路由信息
   * 目前仅支持可视化,可通过浏览器访问 `http://<IP>:<ListenPort+1>` 查看路由信息
+
 * 日志输出了很多连接错误,需要管吗?
   * 正常来说不需要管,连接出错会自动重连,但如果频繁出现连接错误,可以考虑检查下网络环境或防火墙设置
+
 * 如果我有这样的一个路由:   
 ```
          ServerR  
