@@ -118,8 +118,8 @@ bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/
 ```
 
 # F&Q
-* Why it doesn't work on Windows?
-  * To use it with windows, you will need to install a [tap driver](https://github.com/OpenVPN/tap-windows6), or [OpenVPN client](https://github.com/OpenVPN/openvpn) for windows.
+* Is there a Windows version?
+  * Due to Golang library limitations, only Linux is supported for now. If the underlying libraries are replaced or ported to Windows in the future, support may change.
 
 * What if the internal NIC's PPS is too low?
   * It’s recommended to increase the number of threads when creating child nodes. Since the underlying protocol is based on TCP, the concurrency isn’t high. It’s not suitable for scenarios with extremely high PPS, which may lead to network congestion.

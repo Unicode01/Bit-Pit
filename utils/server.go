@@ -338,7 +338,7 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 				case pMethodBroadcast:
 					// handle broadcast packet
 					go func() {
-						err = n.handleBroadcastPacket(conn, data)
+						err = n.handleBroadcastPacket(conn, data, false)
 						if err != nil {
 							ThrowError(err)
 						}
@@ -589,7 +589,7 @@ func (n *NodeTree) handleRemoveNodePacket(conn net.Conn, packet []byte) error {
 // This Method will cost 1 TTL (from downstream)
 // This Method will send the broadcast packet to all Nodes (exclude from && self)
 // This Method does not has any respond!
-func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte) error {
+func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream bool) error {
 	var broadcastP QBroadcastPacket
 	var senderID [IDlenth]byte
 	err := broadcastP.Unmarshal(packet)
@@ -598,11 +598,7 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte) error {
 		return ErrInvalidPacket
 	}
 	// check session
-	var flagFromUpstream bool
-	if n.UpstreamSessionID != nil && broadcastP.SessionID == n.UpstreamSessionID.SessionID { //from upstream
-		flagFromUpstream = true
-	} else {
-		flagFromUpstream = false
+	if !fromUpstream { //from downstream
 		v, ok := n.SessionMap.Load(broadcastP.SessionID)
 		if !ok {
 			ThrowError(ErrInvalidSession)
@@ -628,7 +624,7 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte) error {
 	}
 
 	// session check passed, send broadcast packet to upstream node (exclude from)
-	if n.UpstreamSessionID != nil && !flagFromUpstream { // not upstream broadcast
+	if n.UpstreamSessionID != nil && !fromUpstream { // not upstream broadcast
 		// check session
 		if n.UpstreamSessionID.TimeoutStamp < uint64(time.Now().Unix()) || n.UpstreamSessionID.TTL < 1 {
 			n.RefreshUpstreamSession()
@@ -1652,7 +1648,7 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn, ctx context.Context) {
 				case pMethodBroadcast:
 					// handle broadcast packet
 					go func() {
-						err = n.handleBroadcastPacket(conn, data)
+						err = n.handleBroadcastPacket(conn, data, true)
 						if err != nil {
 							ThrowError(err)
 						}
