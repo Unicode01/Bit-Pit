@@ -141,3 +141,32 @@ func cleanupInterface(ifce *water.Interface) error {
 	}
 	return fmt.Errorf("failed to delete interface after retries")
 }
+
+func BytesToStr(n uint64) string {
+	units := []struct {
+		suffix string
+		size   uint64
+	}{
+		{"EB", 1 << 60},
+		{"PB", 1 << 50},
+		{"TB", 1 << 40},
+		{"GB", 1 << 30},
+		{"MB", 1 << 20},
+		{"KB", 1 << 10},
+		{"B", 1},
+	}
+
+	for _, unit := range units {
+		if n >= unit.size {
+			if unit.suffix == "B" {
+				return fmt.Sprintf("%d B", n)
+			}
+			value := float64(n) / float64(unit.size)
+			s := fmt.Sprintf("%.1f", value)
+			s = strings.TrimSuffix(s, ".0")
+			return fmt.Sprintf("%s %s", s, unit.suffix)
+		}
+	}
+
+	return "0 B"
+}

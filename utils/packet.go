@@ -26,14 +26,17 @@ const (
 
 var (
 	//ERROR INFO
-	ErrPacketTooShort = errors.New("packet too short")
-	ErrInvalidMethod  = errors.New("invalid method")
-	ErrInvalidData    = errors.New("invalid data")
-	ErrInvalidSession = errors.New("invalid session")
-	ErrInvalidPacket  = errors.New("invalid packet")
-	ErrInvalidToken   = errors.New("invalid token")
-	ErrInvalidNodeID  = errors.New("invalid node id")
-	ErrSendToSelf     = errors.New("can not send to self")
+	ErrPacketTooShort          = errors.New("packet too short")
+	ErrInvalidMethod           = errors.New("invalid method")
+	ErrInvalidData             = errors.New("invalid data")
+	ErrInvalidSession          = errors.New("invalid session")
+	ErrInvalidPacket           = errors.New("invalid packet")
+	ErrInvalidToken            = errors.New("invalid token")
+	ErrInvalidNodeID           = errors.New("invalid node id")
+	ErrSendToSelf              = errors.New("can not send to self")
+	ErrDownstreamNoReverseConn = errors.New("downstream no reverse conn")
+	ErrUpstreamNoConn          = errors.New("upstream no conn")
+	ErrNoUpstream              = errors.New("no upstream")
 )
 
 func GeneratePacket(method uint32, data []byte) ([]byte, error) {
@@ -77,23 +80,26 @@ type RespPacket interface {
 //
 
 type QVerifyPacket struct {
-	Token    string   // input Token(raw)
-	Token256 [32]byte // return Token(sha256)
+	Token      string   // input Token(raw)
+	Token256   [32]byte // return Token(sha256)
+	OldSession [8]byte  // input OldSession(raw) it will be used if Old Session is valid
 }
 
 func (p *QVerifyPacket) Marshal() ([]byte, error) {
 	p.Token256 = sha256.Sum256([]byte(p.Token))
-	verifyP := make([]byte, len(p.Token256))
-	copy(verifyP, p.Token256[:])
+	verifyP := make([]byte, len(p.Token256)+8)
+	copy(verifyP[:32], p.Token256[:])
 	p.Token = ""
+	copy(verifyP[32:40], p.OldSession[:])
 	return GeneratePacket(pMethodVerify, verifyP)
 }
 
 func (p *QVerifyPacket) Unmarshal(data []byte) error {
-	if len(data) < 32 {
+	if len(data) < 32+8 {
 		return ErrInvalidData
 	}
 	copy(p.Token256[:], data[:32])
+	copy(p.OldSession[:], data[32:32+8])
 	return nil
 }
 
@@ -314,7 +320,7 @@ func (p *QDataTransferTo) Marshal() ([]byte, error) {
 	totalLen := 4 + 4 //header length
 	// 4 bytes method code
 	// 4 bytes data length
-	totalLen += 8 + IDlenth*2 + ChannelIDMaxLenth + 8 + len(p.Data) + len(p.ExtraData) + 1
+	totalLen += 8 + IDlenth*2 + ChannelIDMaxLenth + 8 + 1 + len(p.Data) + len(p.ExtraData)
 	transferP := make([]byte, totalLen)
 	// generate header
 	binary.LittleEndian.PutUint32(transferP[0:4], pMethodTransferTo)
@@ -402,5 +408,90 @@ func (p *QDataTransferTo) Unmarshal(data []byte) error {
 	p.ExtraData = data[offset : offset+int(extraDataLen)]
 	offset += int(extraDataLen)
 
+	return nil
+}
+
+// return total length of packet
+func (p *QDataTransferTo) Len() int {
+	// 8 bytes header*
+	// 8 bytes session ID
+	// 8 bytes src node ID
+	// 8 bytes dst node ID
+	// 2 bytes channel ID
+	// 4 bytes datalen
+	// 4 bytes extralen
+	// 1 byte noResp
+	// data
+	// extra data
+	return 8 + IDlenth*2 + ChannelIDMaxLenth + 8 + 4 + 4 + 1 + len(p.Data) + len(p.ExtraData)
+}
+
+func (p *QDataTransferTo) Send(sendFunction func(data []byte) (int, error)) error {
+	// 8 bytes header*
+	// 8 bytes session ID
+	// 8 bytes src node ID
+	// 8 bytes dst node ID
+	// 2 bytes channel ID
+	// 4 bytes datalen
+	// 4 bytes extralen
+	// 1 byte noResp
+	// data
+	// extra data
+	header := make([]byte, 8+8+IDlenth*2+ChannelIDMaxLenth+4+4+1)
+	offset := 0
+	// generate header
+	binary.LittleEndian.PutUint32(header[0:4], pMethodTransferTo)
+	lenth := uint32((8 + IDlenth*2 + ChannelIDMaxLenth + 4 + 4 + 1 + len(p.Data) + len(p.ExtraData)))
+	binary.LittleEndian.PutUint32(header[4:8], lenth)
+	offset += 8
+	// Copy fixed-size fields
+	copy(header[offset:], p.SessionID[:])
+	offset += 8
+	copy(header[offset:], p.SrcNodeID[:])
+	offset += IDlenth
+	copy(header[offset:], p.DstNodeID[:])
+	offset += IDlenth
+	copy(header[offset:], p.ChannelID[:])
+	offset += ChannelIDMaxLenth
+	// Write data lengths
+	binary.LittleEndian.PutUint32(header[offset:], uint32(len(p.Data)))
+	offset += 4
+	binary.LittleEndian.PutUint32(header[offset:], uint32(len(p.ExtraData)))
+	offset += 4
+	var noRespByte byte
+	if p.NoResp {
+		noRespByte = 1
+	} else {
+		noRespByte = 0
+	}
+	copy(header[offset:], []byte{noRespByte})
+	// Done header
+	// send header
+	sentBytes := 0
+	for sentBytes < len(header) {
+		n, err := sendFunction(header[sentBytes:])
+		if err != nil {
+			return err
+		}
+		sentBytes += n
+	}
+	// Send data
+	sentBytes = 0
+	for sentBytes < len(p.Data) {
+		n, err := sendFunction(p.Data[sentBytes:])
+		if err != nil {
+			return err
+		}
+		sentBytes += n
+	}
+	// Send extra data
+	sentBytes = 0
+	for sentBytes < len(p.ExtraData) {
+		n, err := sendFunction(p.ExtraData[sentBytes:])
+		if err != nil {
+			return err
+		}
+		sentBytes += n
+	}
 	return nil
 }

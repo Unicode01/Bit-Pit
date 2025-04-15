@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/songgao/water"
 	"golang.org/x/net/ipv6"
@@ -55,7 +57,7 @@ func onPacket(n *NodeTree, data []byte) error {
 }
 
 // Build Local Interface for receive local data then transfer to remote node
-func BuildInterface(n *NodeTree, subnet string) error {
+func BuildInterface(n *NodeTree, subnet string, ctx context.Context) error {
 	ip, CIDR, err := net.ParseCIDR(subnet)
 	if err != nil {
 		return err
@@ -83,13 +85,50 @@ func BuildInterface(n *NodeTree, subnet string) error {
 	// Done Init local Interface
 
 	// enter 0xFF 0xFF channel message loop
-	go ffffchannelLoop(n)
+	go ffffchannelLoop(n, ctx)
+	go InterfaceSpeedCalcThread(ctx)
 	return nil
 }
 
-func ffffchannelLoop(n *NodeTree) {
+func ffffchannelLoop(n *NodeTree, ctx context.Context) {
 	for {
-		data := <-n.LocalInitPoint.dataReadChannel[0xFFFF]
-		go onPacket(n, data.Data)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			data := <-n.LocalInitPoint.dataReadChannel[0xFFFF]
+			go onPacket(n, data.Data)
+		}
+	}
+}
+
+func InterfaceSpeedCalcThread(context context.Context) {
+	lastSentBytes := InterfaceInfo.DataSent
+	lastReceivedBytes := InterfaceInfo.DataReceived
+	lastSentPackets := InterfaceInfo.PacketSent
+	lastReceivedPackets := InterfaceInfo.PacketReceived
+	for {
+		time.Sleep(time.Second * 1)
+		select {
+		case <-context.Done():
+			return
+		default:
+			nowSentBytes := InterfaceInfo.DataSent
+			nowReceivedBytes := InterfaceInfo.DataReceived
+			nowSentPackets := InterfaceInfo.PacketSent
+			nowReceivedPackets := InterfaceInfo.PacketReceived
+			durationSecSent := nowSentBytes - lastSentBytes
+			durationSecReceived := nowReceivedBytes - lastReceivedBytes
+			durationSecSentPackets := nowSentPackets - lastSentPackets
+			durationSecReceivedPackets := nowReceivedPackets - lastReceivedPackets
+			InterfaceInfo.SendPPS = durationSecSentPackets
+			InterfaceInfo.RecvPPS = durationSecReceivedPackets
+			InterfaceInfo.SendSpeed = BytesToStr(durationSecSent) + "/s"
+			InterfaceInfo.RecvSpeed = BytesToStr(durationSecReceived) + "/s"
+			lastSentBytes = nowSentBytes
+			lastReceivedBytes = nowReceivedBytes
+			lastSentPackets = nowSentPackets
+			lastReceivedPackets = nowReceivedPackets
+		}
 	}
 }
