@@ -16,6 +16,10 @@ type interfaceDataInfo struct {
 	DataSent       uint64 `json:"dataSent"`
 	PacketReceived uint64 `json:"packetReceived"`
 	PacketSent     uint64 `json:"packetSent"`
+	SendSpeed      string `json:"sendSpeed"`
+	RecvSpeed      string `json:"recvSpeed"`
+	SendPPS        uint64 `json:"sendPPS"`
+	RecvPPS        uint64 `json:"recvPPS"`
 }
 
 type treeDataInfo struct {
@@ -25,6 +29,10 @@ type treeDataInfo struct {
 	PacketSent        uint64 `json:"packetSent"`
 	PacketRecvDropped uint64 `json:"packetRecvDropped"`
 	PacketSendDropped uint64 `json:"packetSendDropped"`
+	SendSpeed         string `json:"sendSpeed"`
+	RecvSpeed         string `json:"recvSpeed"`
+	SendPPS           uint64 `json:"sendPPS"`
+	RecvPPS           uint64 `json:"recvPPS"`
 }
 
 func Marshal() []byte {

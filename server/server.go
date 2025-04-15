@@ -124,7 +124,7 @@ func FillID(id [8]byte, value string, info string) {
 	}
 }
 
-func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, DisableWebServer bool, WebVisitToken string, subnet string) {
+func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, DisableWebServer bool, WebVisitToken string, subnet string, disableDataCollect bool) {
 	NodeTree := utils.NewNodeTree()
 	NodeTree.LocalInitPoint.IpAddr = Host
 	NodeTree.LocalInitPoint.Port = Port
@@ -141,7 +141,7 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, D
 	}
 	fmt.Printf("Success to init local server node\n")
 	utils.NodeID = NodeTree.LocalUniqueId
-	err = utils.BuildInterface(NodeTree, subnet)
+	err = utils.BuildInterface(NodeTree, subnet, ctx)
 	fmt.Printf("Added local interface, ip: %s\n", NodeTree.LocalIPv6.String())
 	if err != nil {
 		panic(err)
@@ -158,12 +158,16 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, D
 			time.Sleep(10 * time.Second)
 		}
 	}()
+
+	if !disableDataCollect {
+		go TreeSpeedCalcThread(ctx)
+	}
 	if !DisableWebServer {
 		web.InitWebServer(Port+1, WebVisitToken)
 	}
 }
 
-func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool, threads int, DisableWebServer bool, WebVisitToken string, subnet string) {
+func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool, threads int, DisableWebServer bool, WebVisitToken string, subnet string, disableDataCollect bool) {
 	NodeTreeB := utils.NewNodeTree()
 	Remote := utils.NewServerInitPoint()
 	Remote.IpAddr = Host
@@ -178,7 +182,7 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 	}
 	fmt.Printf("Local Unique ID: %x\n", NodeTreeB.LocalUniqueId)
 	utils.NodeID = NodeTreeB.LocalUniqueId
-	err = utils.BuildInterface(NodeTreeB, subnet)
+	err = utils.BuildInterface(NodeTreeB, subnet, ctx)
 	fmt.Printf("Added local interface, ip: %s\n", NodeTreeB.LocalIPv6.String())
 	if err != nil {
 		panic(err)
@@ -201,9 +205,14 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 			time.Sleep(10 * time.Second)
 		}
 	}()
+
+	if !disableDataCollect {
+		go TreeSpeedCalcThread(ctx)
+	}
 	if !DisableWebServer {
 		web.InitWebServer(Port+1, WebVisitToken)
 	}
+
 	// if err != nil {
 	// 	panic(err)
 	// }
@@ -243,6 +252,37 @@ func handleChannelMessage(n *utils.NodeTree, channelID [2]byte) {
 				}
 				web.Data = jsonData
 			}
+		}
+	}
+}
+
+func TreeSpeedCalcThread(context context.Context) {
+	lastSentBytes := utils.TreeInfo.DataSent
+	lastReceivedBytes := utils.TreeInfo.DataReceived
+	lastSentPackets := utils.TreeInfo.PacketSent
+	lastReceivedPackets := utils.TreeInfo.PacketReceived
+	for {
+		time.Sleep(time.Second * 1)
+		select {
+		case <-context.Done():
+			return
+		default:
+			nowSentBytes := utils.TreeInfo.DataSent
+			nowReceivedBytes := utils.TreeInfo.DataReceived
+			nowSentPackets := utils.TreeInfo.PacketSent
+			nowReceivedPackets := utils.TreeInfo.PacketReceived
+			durationSecSent := nowSentBytes - lastSentBytes
+			durationSecReceived := nowReceivedBytes - lastReceivedBytes
+			durationSecSentPackets := nowSentPackets - lastSentPackets
+			durationSecReceivedPackets := nowReceivedPackets - lastReceivedPackets
+			utils.TreeInfo.SendPPS = durationSecSentPackets
+			utils.TreeInfo.RecvPPS = durationSecReceivedPackets
+			utils.TreeInfo.SendSpeed = utils.BytesToStr(durationSecSent) + "/s"
+			utils.TreeInfo.RecvSpeed = utils.BytesToStr(durationSecReceived) + "/s"
+			lastSentBytes = nowSentBytes
+			lastReceivedBytes = nowReceivedBytes
+			lastSentPackets = nowSentPackets
+			lastReceivedPackets = nowReceivedPackets
 		}
 	}
 }

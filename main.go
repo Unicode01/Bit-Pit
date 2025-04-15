@@ -6,19 +6,20 @@ import (
 )
 
 var (
-	RootNode         bool
-	RemoteHost       string
-	RemotePort       int
-	LocalHost        string
-	LocalPort        int
-	LocalRootID      string
-	Token            string
-	TLS              bool
-	DisableWebServer bool
-	Threads          int
-	DEBUG            bool
-	WebVisitToken    string
-	Subnet           string
+	RootNode           bool
+	RemoteHost         string
+	RemotePort         int
+	LocalHost          string
+	LocalPort          int
+	LocalRootID        string
+	Token              string
+	TLS                bool
+	DisableWebServer   bool
+	DisableDataCollect bool
+	Threads            int
+	DEBUG              bool
+	WebVisitToken      string
+	Subnet             string
 )
 
 func main() {
@@ -34,9 +35,9 @@ func main() {
 		if Token == "" {
 			panic("Token is required for node")
 		}
-		server.InitAsRoot(LocalHost, LocalPort, Token, [8]byte{0xc1}, TLS, DisableWebServer, WebVisitToken, Subnet)
+		server.InitAsRoot(LocalHost, LocalPort, Token, [8]byte{0xc1}, TLS, DisableWebServer, WebVisitToken, Subnet, DisableDataCollect)
 	} else {
-		server.InitAsChild(RemoteHost, LocalHost, RemotePort, Token, TLS, Threads, DisableWebServer, WebVisitToken, Subnet)
+		server.InitAsChild(RemoteHost, LocalHost, RemotePort, Token, TLS, Threads, DisableWebServer, WebVisitToken, Subnet, DisableDataCollect)
 	}
 }
 
@@ -53,6 +54,7 @@ func ReadConifg() {
 	flag.BoolVar(&DEBUG, "debug", false, "debug mode")
 	flag.IntVar(&Threads, "th", 1, "Threads for connection")
 	flag.StringVar(&Subnet, "subnet", "fd00::/64", "subnet for root node")
+	flag.BoolVar(&DisableDataCollect, "disabledatacollect", false, "disable data collect")
 	flag.Parse()
 	if WebVisitToken == "" {
 		WebVisitToken = Token

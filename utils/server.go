@@ -77,6 +77,12 @@ const (
 
 	AutoReconnect     = true // if true, auto reconnect when connection lost
 	MaxReconnectRetry = 3    // max retry times when connection lost
+
+	// Events
+	EventAppendChildNode = 0
+	EventRemoveChildNode = 1
+	EventChildGetID      = 2
+	EventRefreshSession  = 3
 )
 
 type Message struct {
@@ -207,14 +213,21 @@ type NodeTree struct {
 	UpstreamSessionID *Session
 	UpstreamUniqueID  [IDlenth]byte //id - used to be the flag and route direction!important
 	Downstream        sync.Map      // save ChildID -> ServerInitPoint
-	Err               error
+
+	EventHandlers        [][]func(interface{})
+	ChannelEventHandlers []func(Message)
+
+	Err error
 }
 
 func NewNodeTree() *NodeTree {
 	n := &NodeTree{
-		LocalInitPoint:  NewServerInitPoint(),
-		RemoteInitPoint: NewServerInitPoint(),
+		LocalInitPoint:       NewServerInitPoint(),
+		RemoteInitPoint:      NewServerInitPoint(),
+		EventHandlers:        make([][]func(interface{}), 4),
+		ChannelEventHandlers: make([]func(Message), 0xFFFF+1),
 	}
+	go n.autoCleanupSession() // create auto clean session thread
 	return n
 }
 
@@ -283,15 +296,20 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 		conn = tlsConn
 	}
 	// enter message loop
-	var packet []byte
-	newpacket := make([]byte, PacketBuffer) // buffer
+	newpacketBuffer := make([]byte, PacketBuffer) // buffer
+	methodPacket := make([]byte, 8)
 	for {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("message loop stopped")
 		default:
-			// read packet
-			num, err := conn.Read(newpacket)
+			num, err := io.ReadFull(conn, methodPacket[0:8])
+			if err != nil {
+				ThrowError(err)
+				if isclosedconn(err) {
+					return err
+				}
+			}
 			// data info log
 			TreeInfo.DataReceived += uint64(num)
 			TreeInfo.PacketReceived++
@@ -301,80 +319,98 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 					return err
 				}
 			}
-			packet = append(packet, newpacket[:num]...)
-			for {
-				method, data, realdatalenth, err := ResolvPacket(packet)
+			method := binary.LittleEndian.Uint32(methodPacket[0:4])
+			datalen := int(binary.LittleEndian.Uint32(methodPacket[4:8]))
+			if datalen > 32_000 { // 32KB
+				// drop packet
+				TreeInfo.PacketRecvDropped += 1
+				continue
+			}
+			needToAppendBuffer := datalen - len(newpacketBuffer)
+			if needToAppendBuffer > 0 {
+				newpacketBuffer = append(newpacketBuffer, make([]byte, needToAppendBuffer)...)
+			}
+
+			if _, err := io.ReadFull(conn, newpacketBuffer[:datalen]); err != nil {
+				ThrowError(err)
+				if isclosedconn(err) {
+					return err
+				}
+			}
+			TreeInfo.DataReceived += uint64(datalen)
+			// alreadyRead := 0
+			// // get data
+			// for alreadyRead < datalen {
+			// 	n, err := conn.Read(newpacketBuffer[alreadyRead:datalen])
+			// 	if err != nil {
+			// 		ThrowError(err)
+			// 		if isclosedconn(err) {
+			// 			return err
+			// 		}
+			// 	}
+			// 	alreadyRead += n
+			// }
+			// make sure buffer not change when handle packet
+			// so there is no go thread created
+			switch method {
+			case pMethodVerify:
+				// handle verify packet
+				err = n.handleVerifyPacket(conn, newpacketBuffer[:datalen])
 				if err != nil {
-					if err == ErrPacketTooShort {
-						break
-					}
 					ThrowError(err)
-					break // 其他错误跳出处理循环
 				}
-				if realdatalenth > 32_000 { // 32KB
-					// drop packet
-					TreeInfo.PacketRecvDropped += 1
-					packet = nil
-					break
+			case pMethodAppendNode:
+				// handle append node packet
+				err = n.handleAppendNodePacket(conn, newpacketBuffer[:datalen])
+				if err != nil {
+					ThrowError(err)
 				}
-				packet = packet[realdatalenth:]
-				switch method {
-				case pMethodVerify:
-					// handle verify packet
-					go func() {
-						err = n.handleVerifyPacket(conn, data)
-						if err != nil {
-							ThrowError(err)
-						}
-					}()
-				case pMethodAppendNode:
-					// handle append node packet
-					go func() {
-						err = n.handleAppendNodePacket(conn, data)
-						if err != nil {
-							ThrowError(err)
-						}
-					}()
-				case pMethodBroadcast:
-					// handle broadcast packet
-					go func() {
-						err = n.handleBroadcastPacket(conn, data, false)
-						if err != nil {
-							ThrowError(err)
-						}
-					}()
-				case pMethodRemoveNode:
-					// handle remove node packet
-					go func() {
-						err = n.handleRemoveNodePacket(conn, data)
-						if err != nil {
-							ThrowError(err)
-						}
-					}()
-				case pMethodReverseConn:
-					// handle reverse connection packet
-					err = n.handleReverseConnPacket(conn, data)
+			case pMethodBroadcast:
+				// handle broadcast packet
+				data := make([]byte, datalen)
+				copy(data, newpacketBuffer[:datalen])
+				go func() {
+					err = n.handleBroadcastPacket(conn, data, false)
 					if err != nil {
 						ThrowError(err)
 					}
-					// enter loop
-					// to avoid read message from reverse connection
-					keepAlive = true
-					return nil
-				case pMethodTransferTo:
-					// handle transfer to packet
-					go func() {
-						err = n.handleTransferToPacket(conn, data, false)
-						if err != nil {
-							ThrowError(err)
-						}
-					}()
-				default:
-					// drop packet
-					TreeInfo.PacketRecvDropped += 1
-
+				}()
+			case pMethodRemoveNode:
+				// handle remove node packet
+				data := make([]byte, datalen)
+				copy(data, newpacketBuffer[:datalen])
+				go func() {
+					err = n.handleRemoveNodePacket(conn, data)
+					if err != nil {
+						ThrowError(err)
+					}
+				}()
+			case pMethodReverseConn:
+				// handle reverse connection packet
+				err = n.handleReverseConnPacket(conn, newpacketBuffer[:datalen])
+				if err != nil {
+					ThrowError(err)
 				}
+				// exit loop
+				// to avoid read message from reverse connection
+				keepAlive = true
+				return nil
+			case pMethodTransferTo:
+				// handle transfer to packet
+				data := make([]byte, datalen)
+				copy(data, newpacketBuffer[:datalen])
+				go func() {
+					err = n.handleTransferToPacket(conn, data, false)
+					if err != nil {
+						ThrowError(err)
+					}
+				}()
+			default:
+				// drop packet
+				TreeInfo.PacketRecvDropped += 1
+				fmt.Printf("packetDropped: method=%d, datalen=%d\n", method, datalen)
 			}
+
 		}
 	}
 }
@@ -399,6 +435,30 @@ func (n *NodeTree) handleVerifyPacket(conn net.Conn, packet []byte) error {
 		conn.Close()
 		return err
 	}
+	// check if refresh session
+	var oldSession *Session
+	var ID [IDlenth]byte
+	if verifyP.OldSession != [8]byte{} {
+		// refresh session
+		oldSessionS, ok := n.SessionMap.Load(verifyP.OldSession)
+		if !ok {
+			ThrowError(ErrInvalidSession)
+			return ErrInvalidSession
+		}
+		oldSession, ok = oldSessionS.(*Session)
+		if !ok {
+			ThrowError(ErrInvalidSession)
+			return ErrInvalidSession
+		}
+		ID = oldSession.UniqueID
+	}
+	// call event handler
+	for _, handler := range n.EventHandlers[EventRefreshSession] {
+		if handler != nil {
+			handler(verifyP)
+		}
+	}
+
 	// verify token( sha256 )
 	token256 := sha256.Sum256([]byte(n.LocalInitPoint.Token))
 	if verifyP.Token256 != token256 {
@@ -417,7 +477,7 @@ func (n *NodeTree) handleVerifyPacket(conn net.Conn, packet []byte) error {
 		return ErrInvalidToken
 	}
 	// bypassed token check, generate session packet
-	newSession, err := n.NewSession([8]byte{}) // empty Unique ID
+	newSession, err := n.NewSession(ID)
 	if err != nil {
 		return err
 	}
@@ -436,6 +496,7 @@ func (n *NodeTree) handleVerifyPacket(conn net.Conn, packet []byte) error {
 	}
 	// save session to local node
 	n.SessionMap.Store(newSession.SessionID, newSession)
+	n.Id4Session.Store(ID, newSession)
 	return nil
 }
 
@@ -446,6 +507,14 @@ func (n *NodeTree) handleAppendNodePacket(conn net.Conn, packet []byte) error {
 	if err != nil {
 		ThrowError(err)
 	}
+
+	// call event handler
+	for _, handler := range n.EventHandlers[EventAppendChildNode] {
+		if handler != nil {
+			handler(appendP)
+		}
+	}
+
 	// check session
 	v, ok := n.SessionMap.Load(appendP.SessionID)
 	clientSession := v.(*Session)
@@ -529,6 +598,14 @@ func (n *NodeTree) handleAppendNodePacket(conn net.Conn, packet []byte) error {
 func (n *NodeTree) handleRemoveNodePacket(conn net.Conn, packet []byte) error {
 	var QRemoveP QRemoveNodePacket
 	err := QRemoveP.Unmarshal(packet)
+
+	// call event handler
+	for _, handler := range n.EventHandlers[EventRemoveChildNode] {
+		if handler != nil {
+			handler(QRemoveP)
+		}
+	}
+
 	if err != nil {
 		ThrowError(err)
 		// generate error packet
@@ -613,11 +690,19 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 		n.reduceTTL(session.UniqueID)
 	}
 	// save broadcast message
-	n.LocalInitPoint.dataReadChannel[0] <- Message{
+	message := Message{
 		SrcID:       broadcastP.SrcNodeID,
 		Data:        broadcastP.Data,
 		MessageType: MessageTypeBroadcast,
 	}
+	n.LocalInitPoint.dataReadChannel[0] <- message
+
+	// call event handler
+	caller := n.ChannelEventHandlers[0x0000]
+	if caller != nil {
+		go caller(message)
+	}
+
 	// check TTL
 	if broadcastP.TTL < 1 {
 		return nil
@@ -652,6 +737,19 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 		}
 		if err != nil {
 			ThrowError(err)
+			if isclosedconn(err) {
+				n.RemoteInitPoint.conn.rawConn[cu].Close()
+				if len(n.RemoteInitPoint.conn.rawConn) == 1 {
+					n.RemoteInitPoint.conn.currentConn = 0
+					n.RemoteInitPoint.conn.rawConn = nil
+					n.RemoteInitPoint.conn.tlsConn = nil
+					n.RemoteInitPoint.conn.clientMessageLocker = nil
+				} else if len(n.RemoteInitPoint.conn.rawConn) > 1 {
+					n.RemoteInitPoint.conn.rawConn = append(n.RemoteInitPoint.conn.rawConn[:cu], n.RemoteInitPoint.conn.rawConn[cu+1:]...)
+					n.RemoteInitPoint.conn.tlsConn = append(n.RemoteInitPoint.conn.tlsConn[:cu], n.RemoteInitPoint.conn.tlsConn[cu+1:]...)
+					n.RemoteInitPoint.conn.clientMessageLocker = append(n.RemoteInitPoint.conn.clientMessageLocker[:cu], n.RemoteInitPoint.conn.clientMessageLocker[cu+1:]...)
+				}
+			}
 		}
 		// session TTL -1
 		n.UpstreamSessionID.TTL -= 1
@@ -680,12 +778,28 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 				return true
 			}
 			cu := childInitPoint.conn.currentReverseConn
+			if len(childInitPoint.conn.reverseConn) <= cu || childInitPoint.conn.reverseConn[cu] == nil {
+				ThrowError(ErrDownstreamNoReverseConn)
+				return true
+			}
 			childInitPoint.conn.currentReverseConn = (childInitPoint.conn.currentReverseConn + 1) % len(childInitPoint.conn.reverseConn)
 			childInitPoint.conn.reverseWriteLock[cu].Lock()
 			defer childInitPoint.conn.reverseWriteLock[cu].Unlock()
 			_, err = childInitPoint.conn.reverseConn[cu].Write(QbroadcastPraw)
 			if err != nil {
 				ThrowError(err)
+				if isclosedconn(err) {
+					childInitPoint.conn.reverseConn[cu].Close()
+					if len(childInitPoint.conn.reverseConn) == 1 {
+						childInitPoint.conn.reverseConn = nil
+						childInitPoint.conn.reverseWriteLock = nil
+						childInitPoint.conn.currentReverseConn = 0
+					} else if len(childInitPoint.conn.reverseConn) > 1 {
+						childInitPoint.conn.reverseConn = append(childInitPoint.conn.reverseConn[:cu], childInitPoint.conn.reverseConn[cu+1:]...)
+						childInitPoint.conn.reverseWriteLock = append(childInitPoint.conn.reverseWriteLock[:cu], childInitPoint.conn.reverseWriteLock[cu+1:]...)
+						childInitPoint.conn.currentReverseConn = 0
+					}
+				}
 				return true
 			}
 		}
@@ -814,6 +928,13 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 				ThrowError(err)
 				return err
 			}
+
+			// call event handler
+			caller := n.ChannelEventHandlers[ByteToUInt16(transferP.ChannelID)]
+			if caller != nil {
+				go caller(message)
+			}
+
 			return nil
 		}
 		// session check passed, transfer packet
@@ -851,6 +972,10 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 	} else {
 		// check session
 		v, ok := n.SessionMap.Load(transferP.SessionID)
+		if !ok {
+			ThrowError(ErrInvalidSession)
+			return ErrInvalidSession
+		}
 		session := v.(*Session)
 		if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
 			ThrowError(ErrInvalidSession)
@@ -892,6 +1017,13 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 				ThrowError(err)
 				return err
 			}
+
+			// call event handler
+			caller := n.ChannelEventHandlers[ByteToUInt16(transferP.ChannelID)]
+			if caller != nil {
+				go caller(message)
+			}
+
 			return nil
 		}
 		// session check passed, transfer packet
@@ -934,15 +1066,6 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 //
 
 // Tool functions
-
-func (n *NodeTree) String() string {
-	b, err := json.Marshal(n)
-	if err != nil {
-		n.Err = err
-		return ""
-	}
-	return string(b)
-}
 
 func (n *NodeTree) NewSession(UniqueID [IDlenth]byte) (*Session, error) {
 	// generate session id
@@ -1189,7 +1312,8 @@ func (n *NodeTree) connectToInitPoint(initpoint *ServerInitPoint) error {
 	initpoint.conn.currentReverseConn = 0
 	// build verify packet
 	verifyP := QVerifyPacket{
-		Token: initpoint.Token,
+		Token:      initpoint.Token,
+		OldSession: [8]byte{},
 	}
 	verifyPraw, err := verifyP.Marshal()
 	if err != nil {
@@ -1257,7 +1381,8 @@ func (n *NodeTree) connectToInitPoint(initpoint *ServerInitPoint) error {
 func (n *NodeTree) RefreshUpstreamSession() error {
 	// build verify packet
 	verifyP := QVerifyPacket{
-		Token: n.LocalInitPoint.Token,
+		Token:      n.LocalInitPoint.Token,
+		OldSession: n.UpstreamSessionID.SessionID,
 	}
 	verifyPraw, err := verifyP.Marshal()
 	if err != nil {
@@ -1546,6 +1671,16 @@ func (n *NodeTree) reduceTTL(UniqueID [IDlenth]byte) error {
 
 // Locker
 func (n *NodeTree) RemoveSelfFromUpstream() error {
+	if n.UpstreamSessionID == nil { // no upstream
+		return ErrNoUpstream
+	}
+	if n.UpstreamSessionID.TTL < 1 || n.UpstreamSessionID.TimeoutStamp < uint64(time.Now().Unix()) { //timeout or TTL == 0
+		// refresh session
+		err := n.RefreshUpstreamSession()
+		if err != nil {
+			return err
+		}
+	}
 	// build remove packet
 	QRemoveP := QRemoveNodePacket{
 		SessionID: n.UpstreamSessionID.SessionID,
@@ -1605,67 +1740,89 @@ func (n *NodeTree) RemoveSelfFromUpstream() error {
 // receive commands from upstream
 func (n *NodeTree) reverseConnMessageLoop(conn net.Conn, ctx context.Context) {
 	defer conn.Close()
-	var RQP []byte
-	packet := make([]byte, PacketBuffer) // buffer
-	select {
-	case <-ctx.Done():
-		return
-	default:
-		for {
-			// receive message from upstream
-			num, err := conn.Read(packet)
-			// data info log
-			TreeInfo.DataReceived += uint64(num)
-			TreeInfo.PacketReceived++
+	// enter message loop
+	newpacketBuffer := make([]byte, PacketBuffer) // buffer
+	methodPacket := make([]byte, 8)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			num, err := io.ReadFull(conn, methodPacket[0:8])
 			if err != nil {
 				ThrowError(err)
 				if isclosedconn(err) {
-					err := n.CreateReverseConnection(ctx)
+					err = n.CreateReverseConnection(ctx)
 					if err != nil {
 						ThrowError(err)
 					}
 					return
 				}
 			}
-			RQP = append(RQP, packet[:num]...)
-			for {
-				method, data, realLen, err := ResolvPacket(RQP)
-				if err != nil {
-					if err == ErrPacketTooShort {
-						break // 数据不足，等待下次读取
+			// data info log
+			TreeInfo.DataReceived += uint64(num)
+			TreeInfo.PacketReceived++
+			method := binary.LittleEndian.Uint32(methodPacket[0:4])
+			datalen := int(binary.LittleEndian.Uint32(methodPacket[4:8]))
+			if datalen > 32_000 { // 32KB
+				// drop packet
+				TreeInfo.PacketRecvDropped += 1
+				continue
+			}
+			needToAppendBuffer := datalen - len(newpacketBuffer)
+			if needToAppendBuffer > 0 {
+				newpacketBuffer = append(newpacketBuffer, make([]byte, needToAppendBuffer)...)
+			}
+
+			if _, err := io.ReadFull(conn, newpacketBuffer[:datalen]); err != nil {
+				ThrowError(err)
+				if isclosedconn(err) {
+					err = n.CreateReverseConnection(ctx)
+					if err != nil {
+						ThrowError(err)
 					}
-					ThrowError(err)
-					break // 其他错误跳出处理循环
-				}
-				if realLen > 32_000 { // 32KB
-					// drop packet
-					TreeInfo.PacketRecvDropped += 1
-					RQP = nil
-					break
-				}
-				RQP = RQP[realLen:]
-				switch method {
-				case pMethodBroadcast:
-					// handle broadcast packet
-					go func() {
-						err = n.handleBroadcastPacket(conn, data, true)
-						if err != nil {
-							ThrowError(err)
-						}
-					}()
-				case pMethodTransferTo:
-					// handle transfer packet
-					go func() {
-						err = n.handleTransferToPacket(conn, data, true)
-						if err != nil {
-							ThrowError(err)
-						}
-					}()
-				default:
-					// dropped
-					TreeInfo.PacketRecvDropped++
+					return
 				}
 			}
+			TreeInfo.DataReceived += uint64(datalen)
+			// alreadyRead := 0
+			// // get data
+			// for alreadyRead < datalen {
+			// 	n, err := conn.Read(newpacketBuffer[alreadyRead:datalen])
+			// 	if err != nil {
+			// 		ThrowError(err)
+			// 		if isclosedconn(err) {
+			// 			return err
+			// 		}
+			// 	}
+			// 	alreadyRead += n
+			// }
+			switch method {
+			case pMethodBroadcast:
+				// handle broadcast packet
+				data := make([]byte, datalen)
+				copy(data, newpacketBuffer[:datalen])
+				go func() {
+					err = n.handleBroadcastPacket(conn, data, true)
+					if err != nil {
+						ThrowError(err)
+					}
+				}()
+			case pMethodTransferTo:
+				// handle transfer to packetdata := make([]byte, datalen)
+				data := make([]byte, datalen)
+				copy(data, newpacketBuffer[:datalen])
+				go func() {
+					err = n.handleTransferToPacket(conn, data, true)
+					if err != nil {
+						ThrowError(err)
+					}
+				}()
+			default:
+				// drop packet
+				TreeInfo.PacketRecvDropped += 1
+			}
+
 		}
 	}
 
@@ -1707,6 +1864,11 @@ func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth
 			TreeInfo.PacketSent++
 			// 发送广播包
 			cu := n.RemoteInitPoint.conn.currentConn
+			if len(n.RemoteInitPoint.conn.rawConn) <= cu || n.RemoteInitPoint.conn.rawConn[cu] == nil {
+				// no actived connection
+				ThrowError(ErrUpstreamNoConn)
+				return ErrUpstreamNoConn
+			}
 			n.RemoteInitPoint.conn.currentConn = (n.RemoteInitPoint.conn.currentConn + 1) % len(n.RemoteInitPoint.conn.rawConn)
 			if n.RemoteInitPoint.conn.connectionType == 1 {
 				_, err = n.RemoteInitPoint.conn.rawConn[cu].Write(payload)
@@ -1715,6 +1877,12 @@ func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth
 			}
 			if err != nil {
 				ThrowError(fmt.Errorf("upstream broadcast failed: %v", err))
+				if isclosedconn(err) {
+					if n.reconnect(cu, 0) {
+						ThrowError(err)
+						return err
+					}
+				}
 			}
 		}
 		var sendErrors []error
@@ -1753,10 +1921,26 @@ func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth
 			TreeInfo.PacketSent++
 			// 发送到下游节点
 			cu := node.conn.currentReverseConn
+			if len(node.conn.reverseConn) <= cu || node.conn.reverseConn[cu] == nil {
+				// no actived connection
+				sendErrors = append(sendErrors, ErrDownstreamNoReverseConn)
+				return true
+			}
 			node.conn.currentReverseConn = (node.conn.currentReverseConn + 1) % len(node.conn.reverseConn)
 			_, err = node.conn.reverseConn[cu].Write(downstreamPayload)
 			if err != nil {
 				sendErrors = append(sendErrors, fmt.Errorf("send to node %x failed: %v", nodeID, err))
+				if isclosedconn(err) {
+					if len(node.conn.reverseConn) == 1 {
+						node.conn.reverseConn = nil
+						node.conn.reverseWriteLock = nil
+						node.conn.currentReverseConn = 0
+					} else if node.conn.currentReverseConn > 1 {
+						node.conn.reverseConn = append(node.conn.reverseConn[:cu], node.conn.reverseConn[cu+1:]...)
+						node.conn.reverseWriteLock = append(node.conn.reverseWriteLock[:cu], node.conn.reverseWriteLock[cu+1:]...)
+						node.conn.currentReverseConn = 0
+					}
+				}
 			}
 			return true
 		})
@@ -1798,6 +1982,7 @@ func (n *NodeTree) ReadFrom(ChannelID [ChannelIDMaxLenth]byte) (int, []byte, [ID
 // child of SendTO
 // LOCKER
 func (n *NodeTree) sendToUpstream(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth]byte, data []byte, srcid [IDlenth]byte, noneedresp bool) error {
+	var err error
 	// check session
 	if n.UpstreamSessionID.TTL < 1 || n.UpstreamSessionID.TimeoutStamp < uint64(time.Now().Unix()) {
 		n.RefreshUpstreamSession()
@@ -1812,43 +1997,31 @@ func (n *NodeTree) sendToUpstream(ToUniqueID [IDlenth]byte, ChannelID [ChannelID
 		Data:      data,
 		NoResp:    noneedresp,
 	}
-	sendPraw, err := sendP.Marshal()
-	if err != nil {
-		// data log
-		TreeInfo.PacketSendDropped++
-		ThrowError(err)
-		return err
-	}
+	// // sendPraw, err := sendP.Marshal()
+	// if err != nil {
+	// 	// data log
+	// 	TreeInfo.PacketSendDropped++
+	// 	ThrowError(err)
+	// 	return err
+	// }
 	// data log
-	TreeInfo.DataSent += uint64(len(sendPraw))
+	TreeInfo.DataSent += uint64(sendP.Len())
 	TreeInfo.PacketSent++
 	// send send packet to initpoint
 	cu := n.RemoteInitPoint.conn.currentConn
+	if len(n.RemoteInitPoint.conn.rawConn) <= cu || n.RemoteInitPoint.conn.rawConn[cu] == nil {
+		// return failed
+		return ErrUpstreamNoConn
+	}
 	n.RemoteInitPoint.conn.currentConn = (n.RemoteInitPoint.conn.currentConn + 1) % len(n.RemoteInitPoint.conn.rawConn)
 	if !noneedresp {
 		n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
 		defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 	}
 	if n.RemoteInitPoint.conn.connectionType == 1 {
-		sentBytes := 0
-		countBytes := 0
-		for countBytes < len(sendPraw) {
-			countBytes, err = n.RemoteInitPoint.conn.rawConn[cu].Write(sendPraw)
-			if err != nil {
-				break
-			}
-			sentBytes += countBytes
-		}
+		err = sendP.Send(n.RemoteInitPoint.conn.rawConn[cu].Write)
 	} else if n.RemoteInitPoint.conn.connectionType == 2 {
-		sentBytes := 0
-		countBytes := 0
-		for countBytes < len(sendPraw) {
-			countBytes, err = n.RemoteInitPoint.conn.tlsConn[cu].Write(sendPraw)
-			if err != nil {
-				break
-			}
-			sentBytes += countBytes
-		}
+		err = sendP.Send(n.RemoteInitPoint.conn.rawConn[cu].Write)
 	}
 	if err != nil {
 		if isclosedconn(err) {
@@ -1919,38 +2092,41 @@ func (n *NodeTree) sendToDownstream(ToUniqueID [IDlenth]byte, ChannelID [Channel
 		Data:      data,
 		NoResp:    noneedresp,
 	}
-	sendPraw, err := sendP.Marshal()
-	if err != nil {
-		// data log
-		TreeInfo.PacketSendDropped++
-		ThrowError(err)
-		return err
-	}
+	// // sendPraw, err := sendP.Marshal()
+	// if err != nil {
+	// 	// data log
+	// 	TreeInfo.PacketSendDropped++
+	// 	ThrowError(err)
+	// 	return err
+	// }
 	// data log
-	TreeInfo.DataSent += uint64(len(sendPraw))
+	TreeInfo.DataSent += uint64(sendP.Len())
 	TreeInfo.PacketSent++
 	// send packet to downstream
 	cu := downstream.conn.currentReverseConn
+	if len(downstream.conn.reverseConn) <= cu || downstream.conn.reverseConn[cu] == nil {
+		// return failed
+		return ErrDownstreamNoReverseConn
+	}
 	downstream.conn.currentReverseConn = (downstream.conn.currentReverseConn + 1) % len(downstream.conn.reverseConn)
 	if !noneedresp {
 		downstream.conn.reverseWriteLock[cu].Lock()
 		defer downstream.conn.reverseWriteLock[cu].Unlock()
 	}
-	sentBytes := 0
-	countBytes := 0
-	for countBytes < len(sendPraw) {
-		countBytes, err = downstream.conn.reverseConn[cu].Write(sendPraw)
-		if err != nil {
-			break
-		}
-		sentBytes += countBytes
-	}
+	err := sendP.Send(downstream.conn.reverseConn[cu].Write)
 	if err != nil {
 		if isclosedconn(err) {
 			// remove downstream reverse connection
 			downstream.conn.reverseConn[cu].Close()
-			downstream.conn.reverseConn = append(downstream.conn.reverseConn[:cu], downstream.conn.reverseConn[cu+1:]...)
-			downstream.conn.currentReverseConn = 0
+			if len(downstream.conn.reverseConn) == 1 {
+				downstream.conn.reverseConn = nil
+				downstream.conn.reverseWriteLock = nil
+				downstream.conn.currentReverseConn = 0
+			} else {
+				downstream.conn.reverseConn = append(downstream.conn.reverseConn[:cu], downstream.conn.reverseConn[cu+1:]...)
+				downstream.conn.reverseWriteLock = append(downstream.conn.reverseWriteLock[:cu], downstream.conn.reverseWriteLock[cu+1:]...)
+				downstream.conn.currentReverseConn = 0
+			}
 		}
 		ThrowError(err)
 		return err
@@ -2021,4 +2197,25 @@ func (n *NodeTree) reconnect(connIndex int, retry int) bool {
 
 	return true
 
+}
+
+func (n *NodeTree) autoCleanupSession() {
+	for {
+		time.Sleep(10 * time.Second)
+		n.Id4Session.Range(func(k, v interface{}) bool {
+			session, ok := v.(*Session)
+			if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
+				n.Id4Session.Delete(k)
+			}
+			return true
+		})
+		n.SessionMap.Range(func(k, v interface{}) bool {
+			session, ok := v.(*Session)
+			if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
+				n.SessionMap.Delete(k)
+			}
+			return true
+		})
+
+	}
 }

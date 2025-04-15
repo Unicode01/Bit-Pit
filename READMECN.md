@@ -58,6 +58,7 @@
 # 待完善功能
 * 完善路由可视化  
 * 自定义证书  
+* 零拷贝传输实现  
 * 完善自动重连功能 [√]  
 * 数据统计 [+]  
 * 架构优化与性能提升  
@@ -67,7 +68,7 @@
 
 # 命令行参数
 ```
-Usage of ./Bit-Pit:
+Usage of Bit-Pit:
   -H string
         remote host (default "127.0.0.1")
   -P int
@@ -77,16 +78,22 @@ Usage of ./Bit-Pit:
   -T    use TLS
   -debug
         debug mode
+  -disabledatacollect
+        disable data collect
   -dws
         disable web server
   -l string
         local host (default "::")
   -p int
         local port (default 18808)
+  -subnet string
+        subnet for root node (default "fd00::/64")
   -t string
         token
   -th int
         Threads for connection (default 1)
+  -webtoken string
+        web visit token
 ```
 
 # 示例

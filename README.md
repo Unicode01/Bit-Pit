@@ -59,6 +59,7 @@ Examples:
 # Features to Improve
 * Complete routing visualization  
 * Custom certificate support  
+* Zero-copy transmission optimization  
 * Improve auto-reconnect functionality [√]  
 * Data statistics [+]  
 * Architecture optimization and performance enhancement  
@@ -68,7 +69,7 @@ Examples:
 
 # Command Line Parameters
 ```
-Usage of ./Bit-Pit:
+Usage of Bit-Pit:
   -H string
         remote host (default "127.0.0.1")
   -P int
@@ -78,29 +79,35 @@ Usage of ./Bit-Pit:
   -T    use TLS
   -debug
         debug mode
+  -disabledatacollect
+        disable data collect
   -dws
         disable web server
   -l string
         local host (default "::")
   -p int
         local port (default 18808)
+  -subnet string
+        subnet for root node (default "fd00::/64")
   -t string
         token
   -th int
         Threads for connection (default 1)
+  -webtoken string
+        web visit token
 ```
 
 # Examples
 ## Root Node
 ```bash
-./Bit-Pit -Root -t 123456 -l :: -p 10888
+./Bit-Pit -Root -t 123456 -l :: -p 10888 -subnet fd00::/64
 ``` 
 This command creates the node as a root node (Token=123456) and opens the local port `::10888` to accept connection requests from other nodes.  
 After running, the node's LocalID and private IPv6 address will be displayed.
 
 ### Child Node
 ```bash
-./Bit-Pit -H 100.0.0.0 -P 10888 -t 123456 -l :: -p 10888
+./Bit-Pit -H 100.0.0.0 -P 10888 -t 123456 -l :: -p 10888 -subnet fd00::/64
 ``` 
 This command connects the node to `100.0.0.0:10888` as a child node, and also opens local port `::10888` to accept connection requests from other nodes (only effective when Able2AddChildNode=true).  
 After running, the node's LocalID and private IPv6 address will be displayed.
