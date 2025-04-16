@@ -346,9 +346,11 @@
                 const treeData = await fetchData(`http://${window.location.host}/api/getTreeInfo`);
                 if (treeData) {
                     chart.showLoading();
-                    currentTreeData = treeData;
-                    chart.setOption({ series: [{ data: [treeData] }] });
-                    domElements.rawDataElement.textContent = JSON.stringify(treeData, null, 2);
+                    if (treeData !== currentTreeData) {
+                        currentTreeData = treeData;
+                        chart.setOption({ series: [{ data: [treeData] }] });
+                        domElements.rawDataElement.textContent = JSON.stringify(treeData, null, 2);
+                    }
                 }
 
                 // 获取节点信息
