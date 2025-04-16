@@ -37,6 +37,7 @@ var (
 	ErrDownstreamNoReverseConn = errors.New("downstream no reverse conn")
 	ErrUpstreamNoConn          = errors.New("upstream no conn")
 	ErrNoUpstream              = errors.New("no upstream")
+	ErrDatalenTooLong          = errors.New("data len too long")
 )
 
 func GeneratePacket(method uint32, data []byte) ([]byte, error) {
