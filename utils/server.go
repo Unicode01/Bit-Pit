@@ -825,15 +825,32 @@ func (n *NodeTree) handleReverseConnPacket(conn net.Conn, packet []byte) error {
 		// generate error packet
 		RMethodError, err := GeneratePacket(pMethodErrorDefault, []byte("invalid packet"))
 		if err != nil {
+			ThrowError(err)
 		}
 		_, err = conn.Write(RMethodError)
 		if err != nil {
+			ThrowError(err)
 		}
+		conn.Close()
 		return ErrInvalidPacket
 	}
 	// check session
 	v, ok := n.SessionMap.Load(reverseConnP.Session)
-	session := v.(*Session)
+	if !ok {
+		// generate error packet
+		RMethodError, err := GeneratePacket(pMethodErrorDefault, []byte("invalid session"))
+		if err != nil {
+			ThrowError(err)
+		}
+		_, err = conn.Write(RMethodError)
+		if err != nil {
+			ThrowError(err)
+		}
+		ThrowError(err)
+		conn.Close()
+		return ErrInvalidSession
+	}
+	session, ok := v.(*Session)
 	if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 || session.UniqueID != reverseConnP.UniqueID {
 		// generate error packet
 		RMethodError, err := GeneratePacket(pMethodErrorDefault, []byte("invalid session"))
@@ -845,6 +862,7 @@ func (n *NodeTree) handleReverseConnPacket(conn net.Conn, packet []byte) error {
 			ThrowError(err)
 		}
 		ThrowError(err)
+		conn.Close()
 		return ErrInvalidSession
 	}
 	// session check pass
@@ -852,6 +870,7 @@ func (n *NodeTree) handleReverseConnPacket(conn net.Conn, packet []byte) error {
 	v, ok = n.Downstream.Load(reverseConnP.UniqueID)
 	if !ok {
 		ThrowError(fmt.Errorf("child node not found"))
+		conn.Close()
 		return ErrInvalidNodeID
 	}
 	childInitPoint := v.(*ServerInitPoint)
