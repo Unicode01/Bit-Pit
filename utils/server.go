@@ -281,11 +281,6 @@ func (n *NodeTree) serverLoop(ctx context.Context) error {
 
 func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 	keepAlive := false
-	defer func() {
-		if !keepAlive {
-			conn.Close()
-		}
-	}()
 	if n.LocalInitPoint.tlsSettings.Enabled {
 		// upgrade to TLS connection
 		tlsConn := tls.Server(conn, n.LocalInitPoint.tlsSettings.TLSConfig)
@@ -295,6 +290,11 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 		}
 		conn = tlsConn
 	}
+	defer func() {
+		if !keepAlive {
+			conn.Close()
+		}
+	}()
 	// enter message loop
 	newpacketBuffer := make([]byte, PacketBuffer) // buffer
 	methodPacket := make([]byte, 8)
@@ -2049,7 +2049,7 @@ func (n *NodeTree) sendToUpstream(ToUniqueID [IDlenth]byte, ChannelID [ChannelID
 	if n.RemoteInitPoint.conn.connectionType == 1 {
 		err = sendP.Send(n.RemoteInitPoint.conn.rawConn[cu].Write)
 	} else if n.RemoteInitPoint.conn.connectionType == 2 {
-		err = sendP.Send(n.RemoteInitPoint.conn.rawConn[cu].Write)
+		err = sendP.Send(n.RemoteInitPoint.conn.tlsConn[cu].Write)
 	}
 	if err != nil {
 		if isclosedconn(err) {

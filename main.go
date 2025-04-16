@@ -20,6 +20,8 @@ var (
 	DEBUG              bool
 	WebVisitToken      string
 	Subnet             string
+	Cert               string
+	CertKey            string
 )
 
 func main() {
@@ -31,6 +33,8 @@ func main() {
 	// }()
 
 	ReadConifg()
+	server.TlsSettings.Cert = Cert
+	server.TlsSettings.Key = CertKey
 	if RootNode {
 		if Token == "" {
 			panic("Token is required for node")
@@ -55,6 +59,8 @@ func ReadConifg() {
 	flag.IntVar(&Threads, "th", 1, "Threads for connection")
 	flag.StringVar(&Subnet, "subnet", "fd00::/64", "subnet for root node")
 	flag.BoolVar(&DisableDataCollect, "disabledatacollect", false, "disable data collect")
+	flag.StringVar(&Cert, "cert", "", "TLS cert file")
+	flag.StringVar(&CertKey, "certkey", "", "TLS cert key file")
 	flag.Parse()
 	if WebVisitToken == "" {
 		WebVisitToken = Token

@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+var (
+	TlsSettings = &utils.TLSSettings{}
+)
+
 type NTree struct {
 	Name     string            `json:"name"`
 	children map[string]*NTree `json:"-"`        // 实际存储子节点的映射
@@ -133,7 +137,7 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, D
 	NodeTree.LocalUniqueId = RootID
 	NodeTree.LocalIdMask = 8
 	NodeTree.ChildIDEndMask = 16
-	NodeTree.LocalInitPoint.SetTLSConfig(TLS, "", "", &tls.Config{})
+	NodeTree.LocalInitPoint.SetTLSConfig(TLS, TlsSettings.Cert, TlsSettings.Key, &tls.Config{})
 	ctx, cancle := context.WithCancel(context.Background())
 	err := NodeTree.InitLocalServerNode(ctx)
 	if err != nil {
@@ -174,7 +178,7 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 	Remote.Port = Port
 	Remote.NetWork = "tcp"
 	Remote.Token = Token
-	Remote.SetTLSConfig(TLS, "", "", &tls.Config{InsecureSkipVerify: true})
+	Remote.SetTLSConfig(TLS, TlsSettings.Cert, TlsSettings.Key, &tls.Config{InsecureSkipVerify: true})
 	ctx, cancle := context.WithCancel(context.Background())
 	err := NodeTreeB.AppendToNode(Remote, threads, ctx)
 	if err != nil {
