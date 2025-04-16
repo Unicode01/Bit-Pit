@@ -323,6 +323,10 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 			datalen := int(binary.LittleEndian.Uint32(methodPacket[4:8]))
 			if datalen > 32_000 { // 32KB
 				// drop packet
+				ThrowError(ErrDatalenTooLong)
+				if err != nil {
+					return err
+				}
 				TreeInfo.PacketRecvDropped += 1
 				continue
 			}
@@ -1766,6 +1770,10 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn, ctx context.Context) {
 			datalen := int(binary.LittleEndian.Uint32(methodPacket[4:8]))
 			if datalen > 32_000 { // 32KB
 				// drop packet
+				ThrowError(ErrDatalenTooLong)
+				if err != nil {
+					return
+				}
 				TreeInfo.PacketRecvDropped += 1
 				continue
 			}
@@ -1821,6 +1829,7 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn, ctx context.Context) {
 			default:
 				// drop packet
 				TreeInfo.PacketRecvDropped += 1
+				fmt.Printf("packetDropped: method=%d, datalen=%d\n", method, datalen)
 			}
 
 		}
@@ -2165,6 +2174,7 @@ func (n *NodeTree) reconnect(connIndex int, retry int) bool {
 	n.RemoteInitPoint.conn.reconnecting = true
 	defer func() { n.RemoteInitPoint.conn.reconnecting = false }()
 	if retry > MaxReconnectRetry {
+		ThrowError(fmt.Errorf("error on reconnecting: max retry reached"))
 		return false
 	}
 	if !AutoReconnect || connIndex < 0 {
@@ -2188,7 +2198,8 @@ func (n *NodeTree) reconnect(connIndex int, retry int) bool {
 	if n.RemoteInitPoint.tlsSettings.Enabled {
 		tlsconn := tls.Client(newconn, &tls.Config{InsecureSkipVerify: true})
 		if err = tlsconn.Handshake(); err != nil {
-			time.Sleep(3 * time.Second)
+			tlsconn.Close()
+			time.Sleep(3 * (1 << retry))
 			return n.reconnect(connIndex, retry+1)
 		}
 		n.RemoteInitPoint.conn.tlsConn[connIndex] = tlsconn

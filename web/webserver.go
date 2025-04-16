@@ -10,8 +10,8 @@ import (
 var (
 	server     *http.Server
 	VisitToken string
-	Data       []byte
-	NodeInfo   []byte
+	Data       = []byte("{}")
+	NodeInfo   = []byte("{}")
 )
 
 //go:embed templete/index.html
@@ -38,6 +38,11 @@ func InitWebServer(port int, visitToken string) error {
 }
 
 func serverHandler(w http.ResponseWriter, r *http.Request) {
+	// add cross-origin header
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	if r.Method == "GET" {
 		if r.URL.Path == "/" {
 			w.Header().Set("Content-Type", "text/html")
