@@ -58,8 +58,8 @@ Examples:
 
 # Features to Improve
 * Complete routing visualization  
-* Custom certificate support  
-* Zero-copy transmission optimization  
+* Custom certificate support [√]  
+* Zero-copy transmission optimization [-] *due to performance and stability this will not be implemented in short time*
 * Improve auto-reconnect functionality [√]  
 * Data statistics [+]  
 * Architecture optimization and performance enhancement  
