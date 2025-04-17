@@ -102,7 +102,7 @@ if [ "${IS_ROOT}" == "yes" ] || [ "${IS_ROOT}" == "Yes" ] || [ "${IS_ROOT}" == "
     
     read -p "请输入内网IPv6 CIDR (默认：fd00::/64): " IPv6_CIDR
     IPv6_CIDR=${IPv6_CIDR:-fd00::/64}
-    PARAMS="${PARAMS} -6 ${IPv6_CIDR}"
+    PARAMS="${PARAMS} -subnet ${IPv6_CIDR}"
 
 else
 
@@ -129,7 +129,7 @@ else
 
     read -p "请输入内网IPv6 CIDR (默认：fd00::/64): " IPv6_CIDR
     IPv6_CIDR=${IPv6_CIDR:-fd00::/64}
-    PARAMS="${PARAMS} -6 ${IPv6_CIDR}"
+    PARAMS="${PARAMS} -subnet ${IPv6_CIDR}"
 
 fi
 
