@@ -67,7 +67,7 @@
 
 # 命令行参数
 ```
-Usage of Bit-Pit:
+Usage of ./Bit-Pit:
   -H string
         remote host (default "127.0.0.1")
   -P int
@@ -75,6 +75,10 @@ Usage of Bit-Pit:
   -Root
         root node
   -T    use TLS
+  -cert string
+        TLS cert file
+  -certkey string
+        TLS cert key file
   -debug
         debug mode
   -disabledatacollect
