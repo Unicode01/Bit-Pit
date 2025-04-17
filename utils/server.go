@@ -521,7 +521,19 @@ func (n *NodeTree) handleAppendNodePacket(conn net.Conn, packet []byte) error {
 
 	// check session
 	v, ok := n.SessionMap.Load(appendP.SessionID)
-	clientSession := v.(*Session)
+	if !ok {
+		RMethodError, err := GeneratePacket(pMethodErrorDefault, []byte("invalid session"))
+		if err != nil {
+			ThrowError(err)
+		}
+		_, err = conn.Write(RMethodError)
+		if err != nil {
+			ThrowError(err)
+		}
+		ThrowError(err)
+		return ErrInvalidSession
+	}
+	clientSession, ok := v.(*Session)
 	if !ok || clientSession.TimeoutStamp < uint64(time.Now().Unix()) || atomic.LoadUint32(&clientSession.TTL) < 1 {
 		// generate error packet
 		RMethodError, err := GeneratePacket(pMethodErrorDefault, []byte("invalid session"))
@@ -623,7 +635,19 @@ func (n *NodeTree) handleRemoveNodePacket(conn net.Conn, packet []byte) error {
 	}
 	// check session
 	v, ok := n.SessionMap.Load(QRemoveP.SessionID)
-	clientSession := v.(*Session)
+	if !ok {
+		RMethodError, err := GeneratePacket(pMethodErrorDefault, []byte("invalid session"))
+		if err != nil {
+			ThrowError(err)
+		}
+		_, err = conn.Write(RMethodError)
+		if err != nil {
+			ThrowError(err)
+		}
+		ThrowError(err)
+		return ErrInvalidSession
+	}
+	clientSession, ok := v.(*Session)
 	if !ok || clientSession.TimeoutStamp < uint64(time.Now().Unix()) || atomic.LoadUint32(&clientSession.TTL) < 1 || clientSession.UniqueID != QRemoveP.NodeID {
 		// generate error packet
 		RMethodError, err := GeneratePacket(pMethodErrorDefault, []byte("invalid session"))
@@ -685,8 +709,8 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 			ThrowError(ErrInvalidSession)
 			return ErrInvalidSession
 		}
-		session := v.(*Session)
-		if session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
+		session, ok := v.(*Session)
+		if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
 			ThrowError(ErrInvalidSession)
 			return ErrInvalidSession
 		}
@@ -767,7 +791,11 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 			ThrowError(ErrInvalidSession)
 			return true
 		}
-		session := v.(*Session)
+		session, ok := v.(*Session)
+		if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
+			ThrowError(ErrInvalidSession)
+			return true
+		}
 		if UniqueID != senderID { // not the sender
 			// send broadcast packet
 			QbroadcastP := &QBroadcastPacket{
@@ -999,7 +1027,7 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 			ThrowError(ErrInvalidSession)
 			return ErrInvalidSession
 		}
-		session := v.(*Session)
+		session, ok := v.(*Session)
 		if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
 			ThrowError(ErrInvalidSession)
 			// generate error packet
@@ -1680,8 +1708,8 @@ func (n *NodeTree) reduceTTL(UniqueID [IDlenth]byte) error {
 	if !ok {
 		return fmt.Errorf("session not found")
 	}
-	session := v.(*Session)
-	if session.TTL < 1 || session.TimeoutStamp < uint64(time.Now().Unix()) { //timeout or TTL == 0
+	session, ok := v.(*Session)
+	if !ok || session.TTL < 1 || session.TimeoutStamp < uint64(time.Now().Unix()) { //timeout or TTL == 0
 		// remove session
 		n.SessionMap.Delete(session.SessionID)
 		n.Id4Session.Delete(UniqueID)
@@ -1928,8 +1956,11 @@ func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth
 				sendErrors = append(sendErrors, fmt.Errorf("session not found for node %x", nodeID))
 				return true
 			}
-			session := v.(*Session)
-
+			session, ok := v.(*Session)
+			if !ok {
+				sendErrors = append(sendErrors, fmt.Errorf("session type error for node %x", nodeID))
+				return true
+			}
 			// 创建带下游会话的广播包
 			downstreamP := QBroadcastPacket{
 				SrcNodeID: src_id,
@@ -2110,7 +2141,11 @@ func (n *NodeTree) sendToDownstream(ToUniqueID [IDlenth]byte, ChannelID [Channel
 		TreeInfo.PacketSendDropped++
 		return fmt.Errorf("session not found")
 	}
-	session := v.(*Session)
+	session, ok := v.(*Session)
+	if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
+		TreeInfo.PacketSendDropped++
+		return fmt.Errorf("session timeout or TTL < 1")
+	}
 	// build send packet
 	sendP := &QDataTransferTo{
 		SessionID: session.SessionID,

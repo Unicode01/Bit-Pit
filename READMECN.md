@@ -45,8 +45,7 @@
 
 #### 安全传输
 * 采用TLS 1.3加密传输
-* 当前版本使用自动生成的自签名证书
-* 自定义证书功能开发中
+* 可选使用自定义证书或自签证书
 
 # 监控系统（完成度10%）
 * 默认监控端口：监听端口+1
@@ -68,7 +67,7 @@
 
 # 命令行参数
 ```
-Usage of Bit-Pit:
+Usage of ./Bit-Pit:
   -H string
         remote host (default "127.0.0.1")
   -P int
@@ -76,6 +75,10 @@ Usage of Bit-Pit:
   -Root
         root node
   -T    use TLS
+  -cert string
+        TLS cert file
+  -certkey string
+        TLS cert key file
   -debug
         debug mode
   -disabledatacollect
