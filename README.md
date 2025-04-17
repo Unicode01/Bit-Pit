@@ -46,8 +46,7 @@ Examples:
 
 #### Secure Transmission:
 * Uses TLS 1.3 for encrypted transmission  
-* Currently uses auto-generated self-signed certificates  
-* Custom certificate functionality is under development  
+* Custom certificate or Self-signed certificate can be used  
 
 # Monitoring System (10% Complete)
 * Default monitoring port: listening port + 1  
