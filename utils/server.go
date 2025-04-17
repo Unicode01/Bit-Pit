@@ -869,7 +869,7 @@ func (n *NodeTree) handleReverseConnPacket(conn net.Conn, packet []byte) error {
 	// save to reverse connection
 	v, ok = n.Downstream.Load(reverseConnP.UniqueID)
 	if !ok {
-		ThrowError(fmt.Errorf("child node not found"))
+		ThrowError(ErrFindingDownstream)
 		conn.Close()
 		return ErrInvalidNodeID
 	}
@@ -2187,6 +2187,9 @@ func (n *NodeTree) sendToDownstream(ToUniqueID [IDlenth]byte, ChannelID [Channel
 // reconnect connection
 // if success it will return true, otherwise it will return false
 func (n *NodeTree) reconnect(connIndex int, retry int) bool {
+	defer func() {
+		n.RemoteInitPoint.conn.reconnecting = false
+	}()
 	if n.RemoteInitPoint.conn.reconnecting {
 		return false
 	}
