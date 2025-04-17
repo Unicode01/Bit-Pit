@@ -3,6 +3,7 @@ package main
 import (
 	"Bit-Pit/server"
 	"flag"
+	"os"
 )
 
 var (
@@ -33,8 +34,12 @@ func main() {
 	// }()
 
 	ReadConifg()
-	server.TlsSettings.Cert = Cert
-	server.TlsSettings.Key = CertKey
+	if Cert != "" && CertKey != "" {
+		c, _ := os.ReadFile(Cert)
+		k, _ := os.ReadFile(CertKey)
+		server.TlsSettings.Cert = string(c)
+		server.TlsSettings.Key = string(k)
+	}
 	if RootNode {
 		if Token == "" {
 			panic("Token is required for node")
