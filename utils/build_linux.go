@@ -24,19 +24,31 @@ func buildLocalInterface(interfaceName string) (*water.Interface, error) {
 	return ifce, err
 }
 
-func setupInterface(iface *water.Interface, ip string, CIDR *net.IPNet, funcOnReceive func(data []byte)) (cancle context.CancelFunc, err error) {
+func setupInterface(iface *water.Interface, ip string, CIDR *net.IPNet, funcOnReceive func(data []byte), AliasIP string) (cancle context.CancelFunc, err error) {
 	link, err := netlink.LinkByName(iface.Name())
 	if err != nil {
 		return nil, fmt.Errorf("error getting link:%s", err)
 	}
 	// set IPv6 address
-	addr, err := netlink.ParseAddr(ip + "/64")
-	if err != nil {
-		return nil, fmt.Errorf("error parsing IP address:%s", err)
-	}
-	err = netlink.AddrAdd(link, addr)
-	if err != nil {
-		return nil, fmt.Errorf("error adding IP address:%s", err)
+
+	if AliasIP != "" {
+		addr, err := netlink.ParseAddr(AliasIP + "/128")
+		if err != nil {
+			return nil, fmt.Errorf("error parsing IP address:%s", err)
+		}
+		err = netlink.AddrAdd(link, addr)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing IP address:%s", err)
+		}
+	} else {
+		addr, err := netlink.ParseAddr(ip + "/64")
+		if err != nil {
+			return nil, fmt.Errorf("error parsing IP address:%s", err)
+		}
+		err = netlink.AddrAdd(link, addr)
+		if err != nil {
+			return nil, fmt.Errorf("error adding IP address:%s", err)
+		}
 	}
 	// start up the interface
 	err = netlink.LinkSetUp(link)

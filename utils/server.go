@@ -1147,6 +1147,9 @@ func isclosedconn(err error) bool {
 	if err == io.EOF || strings.Contains(err.Error(), "use of closed network connection") || strings.Contains(err.Error(), "broken pipe") || strings.Contains(err.Error(), "connection reset by peer") || strings.Contains(err.Error(), "software caused connection abort") || strings.Contains(err.Error(), "connection timed out") || strings.Contains(err.Error(), "no route to host") {
 		return true
 	}
+	if err == net.ErrClosed {
+		return true
+	}
 	return false
 }
 

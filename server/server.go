@@ -128,7 +128,7 @@ func FillID(id [8]byte, value string, info string) {
 	}
 }
 
-func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, DisableWebServer bool, WebVisitToken string, subnet string, disableDataCollect bool) {
+func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, DisableWebServer bool, WebVisitToken string, subnet string, disableDataCollect bool, AliasIP string) {
 	NodeTree := utils.NewNodeTree()
 	NodeTree.LocalInitPoint.IpAddr = Host
 	NodeTree.LocalInitPoint.Port = Port
@@ -145,8 +145,8 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, D
 	}
 	fmt.Printf("Success to init local server node\n")
 	utils.NodeID = NodeTree.LocalUniqueId
-	err = utils.BuildInterface(NodeTree, subnet, ctx)
-	fmt.Printf("Added local interface, ip: %s\n", NodeTree.LocalIPv6.String())
+	err = utils.BuildInterface(NodeTree, subnet, ctx, AliasIP)
+	fmt.Printf("Added local interface, ip: %s, alias: %s\n", NodeTree.LocalIPv6.String(), AliasIP)
 	if err != nil {
 		panic(err)
 	}
@@ -171,7 +171,7 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, D
 	}
 }
 
-func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool, threads int, DisableWebServer bool, WebVisitToken string, subnet string, disableDataCollect bool) {
+func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool, threads int, DisableWebServer bool, WebVisitToken string, subnet string, disableDataCollect bool, AliasIP string) {
 	NodeTreeB := utils.NewNodeTree()
 	Remote := utils.NewServerInitPoint()
 	Remote.IpAddr = Host
@@ -186,8 +186,8 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 	}
 	fmt.Printf("Local Unique ID: %x\n", NodeTreeB.LocalUniqueId)
 	utils.NodeID = NodeTreeB.LocalUniqueId
-	err = utils.BuildInterface(NodeTreeB, subnet, ctx)
-	fmt.Printf("Added local interface, ip: %s\n", NodeTreeB.LocalIPv6.String())
+	err = utils.BuildInterface(NodeTreeB, subnet, ctx, AliasIP)
+	fmt.Printf("Added local interface, ip: %s, alias: %s\n", NodeTreeB.LocalIPv6.String(), AliasIP)
 	if err != nil {
 		panic(err)
 	}

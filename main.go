@@ -23,6 +23,7 @@ var (
 	Subnet             string
 	Cert               string
 	CertKey            string
+	AliasIPv6          string
 )
 
 func main() {
@@ -44,9 +45,9 @@ func main() {
 		if Token == "" {
 			panic("Token is required for node")
 		}
-		server.InitAsRoot(LocalHost, LocalPort, Token, [8]byte{0xc1}, TLS, DisableWebServer, WebVisitToken, Subnet, DisableDataCollect)
+		server.InitAsRoot(LocalHost, LocalPort, Token, [8]byte{0xc1}, TLS, DisableWebServer, WebVisitToken, Subnet, DisableDataCollect, AliasIPv6)
 	} else {
-		server.InitAsChild(RemoteHost, LocalHost, RemotePort, Token, TLS, Threads, DisableWebServer, WebVisitToken, Subnet, DisableDataCollect)
+		server.InitAsChild(RemoteHost, LocalHost, RemotePort, Token, TLS, Threads, DisableWebServer, WebVisitToken, Subnet, DisableDataCollect, AliasIPv6)
 	}
 }
 
@@ -66,6 +67,7 @@ func ReadConifg() {
 	flag.BoolVar(&DisableDataCollect, "disabledatacollect", false, "disable data collect")
 	flag.StringVar(&Cert, "cert", "", "TLS cert file")
 	flag.StringVar(&CertKey, "certkey", "", "TLS cert key file")
+	flag.StringVar(&AliasIPv6, "aliasipv6", "", "alias ipv6 for root node(*this will change TUN interface ipv6 address)")
 	flag.Parse()
 	if WebVisitToken == "" {
 		WebVisitToken = Token
