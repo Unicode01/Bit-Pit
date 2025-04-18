@@ -23,18 +23,25 @@ func buildLocalInterface(interfaceName string) (*water.Interface, error) {
 	return ifce, err
 }
 
-func setupInterface(iface *water.Interface, ip string, CIDR *net.IPNet, funcOnReceive func(data []byte)) (context.CancelFunc, error) {
+func setupInterface(iface *water.Interface, ip string, CIDR *net.IPNet, funcOnReceive func(data []byte), AliasIP string) (context.CancelFunc, error) {
 	// macOS 通常使用 BSD 风格的网络配置
 	ifaceName := iface.Name()
 
 	// 设置 IPv6 地址
-	cmd := exec.Command("sudo", "ifconfig", ifaceName, "inet6", "add", ip+"/64")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("error setting IPv6 address: %v\noutput: %s", err, string(output))
+	if AliasIP != "" {
+		cmd := exec.Command("sudo", "ifconfig", ifaceName, "inet6", "alias", AliasIP+"/128")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("error setting IPv6 alias address: %v\noutput: %s", err, string(output))
+		}
+	} else {
+		cmd := exec.Command("sudo", "ifconfig", ifaceName, "inet6", "add", ip+"/64")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("error setting IPv6 address: %v\noutput: %s", err, string(output))
+		}
 	}
 
 	// 启用接口
-	cmd = exec.Command("sudo", "ifconfig", ifaceName, "up")
+	cmd := exec.Command("sudo", "ifconfig", ifaceName, "up")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("error enabling interface: %v\noutput: %s", err, string(output))
 	}
