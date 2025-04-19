@@ -1903,7 +1903,7 @@ func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth
 			broadcastP := QBroadcastPacket{
 				SrcNodeID: src_id,
 				Data:      data,
-				TTL:       DefaultBroadcastTTL,
+				TTL:       DefaultBroadcastTTL - 1,
 				SessionID: n.UpstreamSessionID.SessionID,
 			}
 
