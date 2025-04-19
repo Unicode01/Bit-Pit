@@ -104,63 +104,97 @@ func FillIPv6Checksum(packet []byte) error {
 	if len(packet) < ipv6HeaderLen {
 		return errors.New("packet too short for IPv6 header")
 	}
-	// NextHeader at offset 6
-	nextHdr := packet[6]
-	// Payload length at offset 4 (16-bit)
-	payloadLen := binary.BigEndian.Uint16(packet[4:6])
-	// Pseudo-header: src (16 bytes), dst (16 bytes), length (4 bytes), zeros (3 bytes) + nextHdr (1 byte)
-	// Compute starting sum of pseudo-header
-	sum := checksumIPv6PseudoHeader(packet[:16], packet[16:32], uint32(payloadLen), nextHdr)
 
-	// Locate protocol header start
-	if int(payloadLen) > len(packet)-ipv6HeaderLen {
-		return errors.New("payload length exceeds actual packet size")
-	}
+	// 解析基础IPv6头部
+	nextHdr := packet[6]
+	payloadLen := binary.BigEndian.Uint16(packet[4:6])
 	protoStart := ipv6HeaderLen
-	// Zero out checksum field before calculation
+	extHdrLen := 0
+
+	// 遍历扩展头
+Loop:
+	for {
+		switch nextHdr {
+		case 0: // Hop-by-Hop Options
+		case 43: // Routing Header
+		case 44: // Fragment Header
+		case 60: // Destination Options
+		case 51: // AH
+		case 50: // ESP
+			// 处理扩展头
+			if protoStart+8 > len(packet) {
+				return errors.New("packet too short for extension header")
+			}
+			// extHdrType := nextHdr
+			extHdrDataLen := int(packet[protoStart+1]) * 8 // 扩展头长度单位
+			if protoStart+extHdrDataLen > len(packet) {
+				return errors.New("extension header exceeds packet length")
+			}
+			extHdrLen += extHdrDataLen
+			nextHdr = packet[protoStart]
+			protoStart += extHdrDataLen
+		case 6, 17, 58: // 支持传输层协议
+			break Loop
+		default:
+			return fmt.Errorf("unsupported NextHeader: %d", nextHdr)
+		}
+	}
+
+	// 计算实际传输层长度（减去扩展头长度）
+	transportLen := int(payloadLen) - extHdrLen
+	if transportLen < 0 {
+		return errors.New("invalid transport layer length")
+	}
+
+	// 构建伪头部
+	sum := checksumIPv6PseudoHeader(
+		packet[8:24],  // src
+		packet[24:40], // dst
+		uint32(transportLen),
+		nextHdr,
+	)
+
+	// 处理各传输层协议
 	switch nextHdr {
 	case 6: // TCP
-		if len(packet) < protoStart+20 {
+		if protoStart+20 > len(packet) {
 			return errors.New("packet too short for TCP header")
 		}
-		// TCP checksum at offset 16 in TCP header
-		// Zero it
-		packet[protoStart+16] = 0
+		packet[protoStart+16] = 0 // Zero checksum
 		packet[protoStart+17] = 0
-		// Compute over TCP header + data
-		sum += checksumBytes(packet[protoStart : ipv6HeaderLen+int(payloadLen)])
+		sum += checksumBytes(packet[protoStart : protoStart+transportLen])
 		csum := finalizeChecksum(sum)
-		// Write back
 		binary.BigEndian.PutUint16(packet[protoStart+16:protoStart+18], csum)
+
 	case 17: // UDP
-		if len(packet) < protoStart+8 {
+		if protoStart+8 > len(packet) {
 			return errors.New("packet too short for UDP header")
 		}
-		// UDP length at offset 4 in UDP header
 		udpLen := binary.BigEndian.Uint16(packet[protoStart+4 : protoStart+6])
-		// Zero checksum
-		packet[protoStart+6] = 0
+		if int(udpLen) != transportLen {
+			return fmt.Errorf("udp length mismatch: %d vs %d", udpLen, transportLen)
+		}
+		packet[protoStart+6] = 0 // Zero checksum
 		packet[protoStart+7] = 0
-		// Compute over UDP header + data (length from header)
-		sum += checksumBytes(packet[protoStart : protoStart+int(udpLen)])
+		sum += checksumBytes(packet[protoStart : protoStart+transportLen])
 		csum := finalizeChecksum(sum)
-		// Note: RFC 2460 says zero checksum means no checksum
 		if csum == 0 {
 			csum = 0xFFFF
 		}
 		binary.BigEndian.PutUint16(packet[protoStart+6:protoStart+8], csum)
+
 	case 58: // ICMPv6
-		if len(packet) < protoStart+4 {
+		if protoStart+4 > len(packet) {
 			return errors.New("packet too short for ICMPv6 header")
 		}
-		// ICMPv6 checksum at offset 2
-		packet[protoStart+2] = 0
+		packet[protoStart+2] = 0 // Zero checksum
 		packet[protoStart+3] = 0
-		sum += checksumBytes(packet[protoStart : ipv6HeaderLen+int(payloadLen)])
+		sum += checksumBytes(packet[protoStart : protoStart+transportLen])
 		csum := finalizeChecksum(sum)
 		binary.BigEndian.PutUint16(packet[protoStart+2:protoStart+4], csum)
+
 	default:
-		return errors.New("unsupported NextHeader protocol for checksum: " + string(nextHdr))
+		return fmt.Errorf("unsupported transport protocol: %d", nextHdr)
 	}
 	return nil
 }
