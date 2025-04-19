@@ -43,6 +43,7 @@ Examples:
   * LocalID 0x01 → `fd00::0100:0:0:0`  
   * LocalID 0x01cc → `fd00::01cc:0:0:0`  
 * All communication data is encapsulated and routed through the BPTUN virtual interface using node IDs  
+* If AliasIPv6 parameter is configured(`-aliasipv6`), the IPv6 address of the TUN interface will be modified to this parameter value, and the program's packet checksum rewriting function will be enabled, which will consume some performance.
 
 #### Secure Transmission:
 * Uses TLS 1.3 for encrypted transmission  
@@ -76,6 +77,8 @@ Usage of ./Bit-Pit:
   -Root
         root node
   -T    use TLS
+  -aliasipv6 string
+        alias ipv6 for root node(*this will change TUN interface ipv6 address)
   -cert string
         TLS cert file
   -certkey string

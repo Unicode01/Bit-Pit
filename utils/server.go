@@ -1147,6 +1147,9 @@ func isclosedconn(err error) bool {
 	if err == io.EOF || strings.Contains(err.Error(), "use of closed network connection") || strings.Contains(err.Error(), "broken pipe") || strings.Contains(err.Error(), "connection reset by peer") || strings.Contains(err.Error(), "software caused connection abort") || strings.Contains(err.Error(), "connection timed out") || strings.Contains(err.Error(), "no route to host") {
 		return true
 	}
+	if err == net.ErrClosed {
+		return true
+	}
 	return false
 }
 
@@ -1900,7 +1903,7 @@ func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth
 			broadcastP := QBroadcastPacket{
 				SrcNodeID: src_id,
 				Data:      data,
-				TTL:       DefaultBroadcastTTL,
+				TTL:       DefaultBroadcastTTL - 1,
 				SessionID: n.UpstreamSessionID.SessionID,
 			}
 
@@ -1926,11 +1929,13 @@ func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth
 				return ErrUpstreamNoConn
 			}
 			n.RemoteInitPoint.conn.currentConn = (n.RemoteInitPoint.conn.currentConn + 1) % len(n.RemoteInitPoint.conn.rawConn)
+			n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
 			if n.RemoteInitPoint.conn.connectionType == 1 {
 				_, err = n.RemoteInitPoint.conn.rawConn[cu].Write(payload)
 			} else if n.RemoteInitPoint.conn.connectionType == 2 {
 				_, err = n.RemoteInitPoint.conn.tlsConn[cu].Write(payload)
 			}
+			n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 			if err != nil {
 				ThrowError(fmt.Errorf("upstream broadcast failed: %v", err))
 				if isclosedconn(err) {
@@ -1986,7 +1991,9 @@ func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth
 				return true
 			}
 			node.conn.currentReverseConn = (node.conn.currentReverseConn + 1) % len(node.conn.reverseConn)
+			node.conn.reverseWriteLock[cu].Lock()
 			_, err = node.conn.reverseConn[cu].Write(downstreamPayload)
+			node.conn.reverseWriteLock[cu].Unlock()
 			if err != nil {
 				sendErrors = append(sendErrors, fmt.Errorf("send to node %x failed: %v", nodeID, err))
 				if isclosedconn(err) {
@@ -2073,15 +2080,15 @@ func (n *NodeTree) sendToUpstream(ToUniqueID [IDlenth]byte, ChannelID [ChannelID
 		return ErrUpstreamNoConn
 	}
 	n.RemoteInitPoint.conn.currentConn = (n.RemoteInitPoint.conn.currentConn + 1) % len(n.RemoteInitPoint.conn.rawConn)
-	if !noneedresp {
-		n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
-		defer n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
-	}
+	// if !noneedresp {
+	n.RemoteInitPoint.conn.clientMessageLocker[cu].Lock()
+	// }
 	if n.RemoteInitPoint.conn.connectionType == 1 {
 		err = sendP.Send(n.RemoteInitPoint.conn.rawConn[cu].Write)
 	} else if n.RemoteInitPoint.conn.connectionType == 2 {
 		err = sendP.Send(n.RemoteInitPoint.conn.tlsConn[cu].Write)
 	}
+	n.RemoteInitPoint.conn.clientMessageLocker[cu].Unlock()
 	if err != nil {
 		if isclosedconn(err) {
 			if n.reconnect(cu, 0) {
@@ -2172,11 +2179,11 @@ func (n *NodeTree) sendToDownstream(ToUniqueID [IDlenth]byte, ChannelID [Channel
 		return ErrDownstreamNoReverseConn
 	}
 	downstream.conn.currentReverseConn = (downstream.conn.currentReverseConn + 1) % len(downstream.conn.reverseConn)
-	if !noneedresp {
-		downstream.conn.reverseWriteLock[cu].Lock()
-		defer downstream.conn.reverseWriteLock[cu].Unlock()
-	}
+	// if !noneedresp {
+	downstream.conn.reverseWriteLock[cu].Lock()
+	// }
 	err := sendP.Send(downstream.conn.reverseConn[cu].Write)
+	downstream.conn.reverseWriteLock[cu].Unlock()
 	if err != nil {
 		if isclosedconn(err) {
 			// remove downstream reverse connection
