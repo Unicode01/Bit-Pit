@@ -76,6 +76,8 @@ Usage of ./Bit-Pit:
   -Root
         root node
   -T    use TLS
+  -aliasipv6 string
+        alias ipv6 for root node(*this will change TUN interface ipv6 address)
   -cert string
         TLS cert file
   -certkey string
