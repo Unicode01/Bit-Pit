@@ -47,7 +47,7 @@ func main() {
 		}
 		server.InitAsRoot(LocalHost, LocalPort, Token, [8]byte{0xc1}, TLS, DisableWebServer, WebVisitToken, Subnet, DisableDataCollect, AliasIPv6)
 	} else {
-		server.InitAsChild(RemoteHost, LocalHost, RemotePort, Token, TLS, Threads, DisableWebServer, WebVisitToken, Subnet, DisableDataCollect, AliasIPv6)
+		server.InitAsChild(RemoteHost, LocalHost, RemotePort, LocalPort, Token, TLS, Threads, DisableWebServer, WebVisitToken, Subnet, DisableDataCollect, AliasIPv6)
 	}
 }
 
