@@ -345,18 +345,18 @@
                 // 获取树状数据
                 const treeData = await fetchData(`http://${window.location.host}/api/getTreeInfo`);
                 if (treeData) {
-                    chart.showLoading();
                     if (treeData !== currentTreeData) {
+                        chart.showLoading();
                         currentTreeData = treeData;
                         chart.setOption({ series: [{ data: [treeData] }] });
                         domElements.rawDataElement.textContent = JSON.stringify(treeData, null, 2);
+                        chart.hideLoading();
                     }
                 }
 
                 // 获取节点信息
                 const nodeData = await fetchData(`http://${window.location.host}/api/getNodeInfo`);
                 if (nodeData) {
-                    nodeChart.showLoading();
                     currentNodeData = nodeData;
                     // 更新原始数据
                     domElements.nodeRawData.textContent = JSON.stringify(nodeData, null, 2);
@@ -386,8 +386,8 @@
                     });
                 }
 
-                chart.hideLoading();
-                nodeChart.hideLoading();
+
+
             }
 
             // 登录处理
