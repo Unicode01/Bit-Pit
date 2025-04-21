@@ -196,7 +196,7 @@ func InitAsChild(Host string, LocalHost string, Port int, LocalPort int, Token s
 		NodeTreeB.LocalInitPoint.Port = LocalPort
 		NodeTreeB.LocalInitPoint.NetWork = "tcp"
 		NodeTreeB.LocalInitPoint.Token = Token
-		NodeTreeB.LocalInitPoint.SetTLSConfig(TLS, "", "", &tls.Config{InsecureSkipVerify: true})
+		NodeTreeB.LocalInitPoint.SetTLSConfig(TLS, TlsSettings.Cert, TlsSettings.Key, &tls.Config{InsecureSkipVerify: true})
 		NodeTreeB.InitLocalServerNode(ctx)
 	}
 	go signalEvent(NodeTreeB, cancle)
