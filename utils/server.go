@@ -712,6 +712,19 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 		session, ok := v.(*Session)
 		if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
 			ThrowError(ErrInvalidSession)
+			// try to notify child to refresh session
+			if ok {
+				err := n.NotifyChildRefreshSession(session.UniqueID)
+				if err == ErrDownstreamNoReverseConn || isclosedconn(err) {
+					// remove child node
+					err = n.RemoveChildNode(session.UniqueID)
+					if err != nil {
+						ThrowError(err)
+					}
+				} else {
+					ThrowError(err)
+				}
+			}
 			return ErrInvalidSession
 		}
 		senderID = session.UniqueID
@@ -794,6 +807,19 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 		session, ok := v.(*Session)
 		if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
 			ThrowError(ErrInvalidSession)
+			// try to notify child to refresh session
+			if ok {
+				err := n.NotifyChildRefreshSession(session.UniqueID)
+				if err == ErrDownstreamNoReverseConn || isclosedconn(err) {
+					// remove child node
+					err = n.RemoveChildNode(session.UniqueID)
+					if err != nil {
+						ThrowError(err)
+					}
+				} else {
+					ThrowError(err)
+				}
+			}
 			return true
 		}
 		if UniqueID != senderID { // not the sender
@@ -943,6 +969,9 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 		// check session
 		if n.UpstreamSessionID == nil && n.UpstreamSessionID.SessionID != transferP.SessionID {
 			ThrowError(ErrInvalidSession)
+			if transferP.NoResp {
+				return ErrInvalidSession
+			}
 			// generate error packet
 			errorP, err := GeneratePacket(pMethodErrorDefault, []byte("invalid session"))
 			if err != nil {
@@ -992,6 +1021,9 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 		err := n.SendTo(transferP.DstNodeID, transferP.ChannelID, transferP.Data, transferP.SrcNodeID)
 		if err != nil {
 			ThrowError(err)
+			if transferP.NoResp {
+				return nil
+			}
 			// generate error packet
 			errorP, err := GeneratePacket(pMethodErrorDefault, []byte(err.Error()))
 			if err != nil {
@@ -1030,6 +1062,22 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 		session, ok := v.(*Session)
 		if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
 			ThrowError(ErrInvalidSession)
+			// try to notify child to refresh session
+			if ok {
+				err := n.NotifyChildRefreshSession(session.UniqueID)
+				if err == ErrDownstreamNoReverseConn || isclosedconn(err) {
+					// remove child node
+					err = n.RemoveChildNode(session.UniqueID)
+					if err != nil {
+						ThrowError(err)
+					}
+				} else {
+					ThrowError(err)
+				}
+			}
+			if transferP.NoResp {
+				return ErrInvalidSession
+			}
 			// generate error packet
 			errorP, err := GeneratePacket(pMethodErrorDefault, []byte("invalid session"))
 			if err != nil {
@@ -1043,6 +1091,8 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 			}
 			return ErrInvalidSession
 		}
+		// pass session check
+
 		// reduce TTL
 		n.reduceTTL(session.UniqueID)
 		// check id
@@ -1081,6 +1131,9 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 		err := n.SendTo(transferP.DstNodeID, transferP.ChannelID, transferP.Data, transferP.SrcNodeID)
 		if err != nil {
 			ThrowError(err)
+			if transferP.NoResp {
+				return ErrInvalidSession
+			}
 			// generate error packet
 			errorP, err := GeneratePacket(pMethodErrorDefault, []byte(err.Error()))
 			if err != nil {
@@ -1497,6 +1550,55 @@ func (n *NodeTree) RefreshUpstreamSession() error {
 	return nil
 }
 
+// this func used to notify child node to refresh session
+// Locker
+func (n *NodeTree) NotifyChildRefreshSession(childID [IDlenth]byte) error {
+	// check child ID is valid
+	v, ok := n.Downstream.Load(childID)
+	if !ok {
+		return ErrInvalidNodeID
+	}
+	child := v.(*ServerInitPoint)
+	if child.conn.reverseConn == nil {
+		return ErrInvalidNodeID
+	}
+	// build refresh session packet
+	refreshP := QSessionRefreshPacket{}
+	refreshPraw, _ := refreshP.Marshal()
+	// send refresh session packet to child
+	cu := child.conn.currentReverseConn
+	if len(child.conn.reverseConn) <= cu || child.conn.reverseConn[cu] == nil {
+		// return failed
+		return ErrDownstreamNoReverseConn
+	}
+	child.conn.currentReverseConn = (child.conn.currentReverseConn + 1) % len(child.conn.reverseConn)
+	child.conn.reverseWriteLock[cu].Lock()
+	_, err := child.conn.reverseConn[cu].Write(refreshPraw)
+	child.conn.reverseWriteLock[cu].Unlock()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// this func used to remove child node from node tree
+// no err will be throw out as a l2 function
+func (n *NodeTree) RemoveChildNode(childID [IDlenth]byte) error {
+	v, ok := n.Id4Session.Load(childID)
+	if !ok {
+		return ErrInvalidNodeID
+	}
+	session := v.(*Session)
+	if session == nil {
+		return ErrInvalidNodeID
+	}
+	n.Downstream.Delete(childID)
+	// remove session
+	n.SessionMap.Delete(session.SessionID)
+	n.Id4Session.Delete(childID)
+	return nil
+}
+
 // Append Self to Node(Connect as a child node)
 // no locker
 func (n *NodeTree) AppendToNode(initpoint *ServerInitPoint, threads int, context context.Context) error {
@@ -1876,6 +1978,16 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn, ctx context.Context) {
 						ThrowError(err)
 					}
 				}()
+			case pMethodSessionRefresh:
+				// handle session refresh packet
+				data := make([]byte, datalen)
+				copy(data, newpacketBuffer[:datalen])
+				go func() {
+					err = n.handleSessionRefreshPacket(conn, data)
+					if err != nil {
+						ThrowError(err)
+					}
+				}()
 			default:
 				// drop packet
 				TreeInfo.PacketRecvDropped += 1
@@ -1885,6 +1997,16 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn, ctx context.Context) {
 		}
 	}
 
+}
+
+// this func is used to force refresh upstream session, handled by upstream
+func (n *NodeTree) handleSessionRefreshPacket(_ net.Conn, _ []byte) error {
+	fmt.Printf("Upstream forced refresh session\n")
+	err := n.RefreshUpstreamSession()
+	if err != nil {
+		ThrowError(err)
+	}
+	return err
 }
 
 // No locker
@@ -2138,7 +2260,7 @@ func (n *NodeTree) sendToDownstream(ToUniqueID [IDlenth]byte, ChannelID [Channel
 	if !ok {
 		// data log
 		TreeInfo.PacketSendDropped++
-		return fmt.Errorf("downstream node not found")
+		return ErrInvalidNodeID
 	}
 	downstream := v.(*ServerInitPoint)
 	// get session
@@ -2146,12 +2268,21 @@ func (n *NodeTree) sendToDownstream(ToUniqueID [IDlenth]byte, ChannelID [Channel
 	if !ok {
 		// data log
 		TreeInfo.PacketSendDropped++
-		return fmt.Errorf("session not found")
+		return ErrInvalidSession
 	}
 	session, ok := v.(*Session)
 	if !ok || session.TimeoutStamp < uint64(time.Now().Unix()) || session.TTL < 1 {
 		TreeInfo.PacketSendDropped++
-		return fmt.Errorf("session timeout or TTL < 1")
+		// notify child to refresh session
+		err := n.NotifyChildRefreshSession(downstreamID)
+		if err == ErrDownstreamNoReverseConn || isclosedconn(err) {
+			err = n.RemoveChildNode(downstreamID)
+			if err != nil {
+				ThrowError(err)
+			}
+			return err
+		}
+		return ErrInvalidSession
 	}
 	// build send packet
 	sendP := &QDataTransferTo{
