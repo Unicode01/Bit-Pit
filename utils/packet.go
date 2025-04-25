@@ -9,14 +9,15 @@ import (
 
 const (
 	//METHOD CODES(0-999)
-	pMethodOK           = uint32(0) // Handle Done
-	pMethodVerify       = uint32(1) // Handle Done
-	pMethodReverseConn  = uint32(2) // Handle Done
-	pMethodPullNodeInfo = uint32(3)
-	pMethodAppendNode   = uint32(4)   // Handle Done
-	pMethodRemoveNode   = uint32(5)   // Handle Done
-	pMethodTransferTo   = uint32(6)   // Handle Done
-	pMethodBroadcast    = uint32(255) // Handle Done
+	pMethodOK             = uint32(0) // Handle Done
+	pMethodVerify         = uint32(1) // Handle Done
+	pMethodReverseConn    = uint32(2) // Handle Done
+	pMethodPullNodeInfo   = uint32(3)
+	pMethodAppendNode     = uint32(4) // Handle Done
+	pMethodRemoveNode     = uint32(5) // Handle Done
+	pMethodTransferTo     = uint32(6) // Handle Done
+	pMethodSessionRefresh = uint32(7)
+	pMethodBroadcast      = uint32(255) // Handle Done
 
 	//ERROR CODES(1000-1999)
 	pMethodErrorDefault = uint32(1000)
@@ -497,3 +498,20 @@ func (p *QDataTransferTo) Send(sendFunction func(data []byte) (int, error)) erro
 	}
 	return nil
 }
+
+//
+// QSessionRefreshPacket
+// Upstream Send this packet to child to notify force refresh upstream session
+//
+
+type QSessionRefreshPacket struct {
+}
+
+func (p *QSessionRefreshPacket) Marshal() ([]byte, error) {
+	return GeneratePacket(pMethodSessionRefresh, nil)
+}
+
+func (p *QSessionRefreshPacket) Unmarshal(data []byte) error {
+	return nil
+}
+

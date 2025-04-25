@@ -33,6 +33,7 @@ type treeDataInfo struct {
 	RecvSpeed         string `json:"recvSpeed"`
 	SendPPS           uint64 `json:"sendPPS"`
 	RecvPPS           uint64 `json:"recvPPS"`
+	Errors            uint64 `json:"errors"`
 }
 
 func Marshal() []byte {
