@@ -1192,6 +1192,7 @@ func (n *NodeTree) NewSession(UniqueID [IDlenth]byte) (*Session, error) {
 }
 
 func ThrowError(errorinfo error) {
+	TreeInfo.Errors++
 	_, file, lineNo, _ := runtime.Caller(1)
 	log.Printf("ERROR: %v on line %d in %s\n", errorinfo, lineNo, file)
 }
