@@ -171,7 +171,7 @@ func InitAsRoot(Host string, Port int, Token string, RootID [8]byte, TLS bool, D
 	}
 }
 
-func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool, threads int, DisableWebServer bool, WebVisitToken string, subnet string, disableDataCollect bool, AliasIP string) {
+func InitAsChild(Host string, LocalHost string, Port int, LocalPort int, Token string, TLS bool, threads int, DisableWebServer bool, WebVisitToken string, subnet string, disableDataCollect bool, AliasIP string) {
 	NodeTreeB := utils.NewNodeTree()
 	Remote := utils.NewServerInitPoint()
 	Remote.IpAddr = Host
@@ -193,10 +193,10 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 	}
 	if NodeTreeB.Able2AddChildNode {
 		NodeTreeB.LocalInitPoint.IpAddr = LocalHost
-		NodeTreeB.LocalInitPoint.Port = Remote.Port
+		NodeTreeB.LocalInitPoint.Port = LocalPort
 		NodeTreeB.LocalInitPoint.NetWork = "tcp"
 		NodeTreeB.LocalInitPoint.Token = Token
-		NodeTreeB.LocalInitPoint.SetTLSConfig(TLS, "", "", &tls.Config{InsecureSkipVerify: true})
+		NodeTreeB.LocalInitPoint.SetTLSConfig(TLS, TlsSettings.Cert, TlsSettings.Key, &tls.Config{InsecureSkipVerify: true})
 		NodeTreeB.InitLocalServerNode(ctx)
 	}
 	go signalEvent(NodeTreeB, cancle)
@@ -214,7 +214,7 @@ func InitAsChild(Host string, LocalHost string, Port int, Token string, TLS bool
 		go TreeSpeedCalcThread(ctx)
 	}
 	if !DisableWebServer {
-		web.InitWebServer(Port+1, WebVisitToken)
+		web.InitWebServer(LocalPort+1, WebVisitToken)
 	}
 
 	// if err != nil {
