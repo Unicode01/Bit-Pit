@@ -119,13 +119,13 @@ Usage of ./Bit-Pit:
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/install.sh)
 ```
-### 自动更新
-```bash
-bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/update.sh)
-```
 ### 自动卸载
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/uninstall.sh)
+```
+### 自动更新
+```bash
+bash <(curl -s https://raw.githubusercontent.com/Unicode01/Bit-Pit/main/scripts/update.sh)
 ```
 
 # F&Q
