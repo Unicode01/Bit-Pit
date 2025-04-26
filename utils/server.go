@@ -26,6 +26,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -838,6 +839,11 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 			cu := childInitPoint.conn.currentReverseConn
 			if len(childInitPoint.conn.reverseConn) <= cu || childInitPoint.conn.reverseConn[cu] == nil {
 				ThrowError(ErrDownstreamNoReverseConn)
+				// remove child node
+				err = n.RemoveChildNode(session.UniqueID)
+				if err != nil {
+					ThrowError(err)
+				}
 				return true
 			}
 			childInitPoint.conn.currentReverseConn = (childInitPoint.conn.currentReverseConn + 1) % len(childInitPoint.conn.reverseConn)
@@ -1719,6 +1725,9 @@ func (n *NodeTree) CreateReverseConnection(ctx context.Context) error {
 		return err
 	}
 	if method != pMethodOK {
+		ThrowError(fmt.Errorf("failed on reverse connection: %s", string(data)))
+		// exit
+		os.Exit(1)
 		return fmt.Errorf("failed on reverse connection: %s", string(data))
 	}
 	return nil
