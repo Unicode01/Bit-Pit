@@ -803,6 +803,19 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 		v, ok := n.Id4Session.Load(UniqueID)
 		if !ok {
 			ThrowError(ErrInvalidSession)
+			// try to notify child to refresh session
+			if ok {
+				err := n.NotifyChildRefreshSession(UniqueID)
+				if err == ErrDownstreamNoReverseConn || isclosedconn(err) {
+					// remove child node
+					err = n.RemoveChildNode(UniqueID)
+					if err != nil {
+						ThrowError(err)
+					}
+				} else {
+					ThrowError(err)
+				}
+			}
 			return true
 		}
 		session, ok := v.(*Session)
@@ -810,10 +823,10 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 			ThrowError(ErrInvalidSession)
 			// try to notify child to refresh session
 			if ok {
-				err := n.NotifyChildRefreshSession(session.UniqueID)
+				err := n.NotifyChildRefreshSession(UniqueID)
 				if err == ErrDownstreamNoReverseConn || isclosedconn(err) {
 					// remove child node
-					err = n.RemoveChildNode(session.UniqueID)
+					err = n.RemoveChildNode(UniqueID)
 					if err != nil {
 						ThrowError(err)
 					}
