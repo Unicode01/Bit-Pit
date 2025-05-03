@@ -281,6 +281,12 @@ func (n *NodeTree) serverLoop(ctx context.Context) error {
 }
 
 func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
+	var BufferPool = sync.Pool{
+		New: func() interface{} {
+			buf := make([]byte, PacketBuffer)
+			return &buf
+		},
+	}
 	keepAlive := false
 	if n.LocalInitPoint.tlsSettings.Enabled {
 		// upgrade to TLS connection
@@ -297,13 +303,14 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 		}
 	}()
 	// enter message loop
-	newpacketBuffer := make([]byte, PacketBuffer) // buffer
 	methodPacket := make([]byte, 8)
 	for {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("message loop stopped")
 		default:
+			newPacketBufferPtr := BufferPool.Get().(*[]byte)
+			newpacketBuffer := *newPacketBufferPtr
 			num, err := io.ReadFull(conn, methodPacket[0:8])
 			if err != nil {
 				ThrowError(err)
@@ -364,31 +371,31 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 				if err != nil {
 					ThrowError(err)
 				}
+				BufferPool.Put(newPacketBufferPtr) // release buffer
 			case pMethodAppendNode:
 				// handle append node packet
 				err = n.handleAppendNodePacket(conn, newpacketBuffer[:datalen])
 				if err != nil {
 					ThrowError(err)
 				}
+				BufferPool.Put(newPacketBufferPtr) // release buffer
 			case pMethodBroadcast:
 				// handle broadcast packet
-				data := make([]byte, datalen)
-				copy(data, newpacketBuffer[:datalen])
 				go func() {
-					err = n.handleBroadcastPacket(conn, data, false)
+					err = n.handleBroadcastPacket(conn, newpacketBuffer[:datalen], false)
 					if err != nil {
 						ThrowError(err)
 					}
+					BufferPool.Put(newPacketBufferPtr) // release buffer
 				}()
 			case pMethodRemoveNode:
 				// handle remove node packet
-				data := make([]byte, datalen)
-				copy(data, newpacketBuffer[:datalen])
 				go func() {
-					err = n.handleRemoveNodePacket(conn, data)
+					err = n.handleRemoveNodePacket(conn, newpacketBuffer[:datalen])
 					if err != nil {
 						ThrowError(err)
 					}
+					BufferPool.Put(newPacketBufferPtr) // release buffer
 				}()
 			case pMethodReverseConn:
 				// handle reverse connection packet
@@ -399,18 +406,19 @@ func (n *NodeTree) handleConnection(ctx context.Context, conn net.Conn) error {
 				// exit loop
 				// to avoid read message from reverse connection
 				keepAlive = true
+				BufferPool.Put(newPacketBufferPtr)
 				return nil
 			case pMethodTransferTo:
 				// handle transfer to packet
-				data := make([]byte, datalen)
-				copy(data, newpacketBuffer[:datalen])
 				go func() {
-					err = n.handleTransferToPacket(conn, data, false)
+					err = n.handleTransferToPacket(conn, newpacketBuffer[:datalen], false)
 					if err != nil {
 						ThrowError(err)
 					}
+					BufferPool.Put(newPacketBufferPtr) // release buffer
 				}()
 			default:
+				BufferPool.Put(newPacketBufferPtr)
 				// drop packet
 				TreeInfo.PacketRecvDropped += 1
 				fmt.Printf("packetDropped: method=%d, datalen=%d\n", method, datalen)
@@ -695,7 +703,7 @@ func (n *NodeTree) handleRemoveNodePacket(conn net.Conn, packet []byte) error {
 // This Method will cost 1 TTL (from downstream)
 // This Method will send the broadcast packet to all Nodes (exclude from && self)
 // This Method does not has any respond!
-func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream bool) error {
+func (n *NodeTree) handleBroadcastPacket(conn net.Conn, packet []byte, fromUpstream bool) error {
 	var broadcastP QBroadcastPacket
 	var senderID [IDlenth]byte
 	err := broadcastP.Unmarshal(packet)
@@ -708,6 +716,7 @@ func (n *NodeTree) handleBroadcastPacket(_ net.Conn, packet []byte, fromUpstream
 		v, ok := n.SessionMap.Load(broadcastP.SessionID)
 		if !ok {
 			ThrowError(ErrInvalidSession)
+			conn.Close()
 			return ErrInvalidSession
 		}
 		session, ok := v.(*Session)
@@ -1076,6 +1085,22 @@ func (n *NodeTree) handleTransferToPacket(conn net.Conn, packet []byte, fromUpst
 		v, ok := n.SessionMap.Load(transferP.SessionID)
 		if !ok {
 			ThrowError(ErrInvalidSession)
+			if transferP.NoResp {
+				conn.Close()
+				return ErrInvalidSession
+			}
+			// generate error packet
+			errorP, err := GeneratePacket(pMethodErrorDefault, []byte("invalid session"))
+			if err != nil {
+				ThrowError(err)
+				return err
+			}
+			_, err = conn.Write(errorP)
+			if err != nil {
+				ThrowError(err)
+				return err
+			}
+			conn.Close()
 			return ErrInvalidSession
 		}
 		session, ok := v.(*Session)
@@ -1918,15 +1943,22 @@ func (n *NodeTree) RemoveSelfFromUpstream() error {
 // Message Loop
 // receive commands from upstream
 func (n *NodeTree) reverseConnMessageLoop(conn net.Conn, ctx context.Context) {
+	var BufferPool = sync.Pool{
+		New: func() interface{} {
+			buf := make([]byte, PacketBuffer)
+			return &buf
+		},
+	}
 	defer conn.Close()
 	// enter message loop
-	newpacketBuffer := make([]byte, PacketBuffer) // buffer
 	methodPacket := make([]byte, 8)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
+			newPacketBufferPtr := BufferPool.Get().(*[]byte)
+			newpacketBuffer := *newPacketBufferPtr // buffer
 			num, err := io.ReadFull(conn, methodPacket[0:8])
 			if err != nil {
 				ThrowError(err)
@@ -1983,35 +2015,33 @@ func (n *NodeTree) reverseConnMessageLoop(conn net.Conn, ctx context.Context) {
 			switch method {
 			case pMethodBroadcast:
 				// handle broadcast packet
-				data := make([]byte, datalen)
-				copy(data, newpacketBuffer[:datalen])
 				go func() {
-					err = n.handleBroadcastPacket(conn, data, true)
+					err = n.handleBroadcastPacket(conn, newpacketBuffer[:datalen], true)
 					if err != nil {
 						ThrowError(err)
 					}
+					BufferPool.Put(newPacketBufferPtr)
 				}()
 			case pMethodTransferTo:
 				// handle transfer to packetdata := make([]byte, datalen)
-				data := make([]byte, datalen)
-				copy(data, newpacketBuffer[:datalen])
 				go func() {
-					err = n.handleTransferToPacket(conn, data, true)
+					err = n.handleTransferToPacket(conn, newpacketBuffer[:datalen], true)
 					if err != nil {
 						ThrowError(err)
 					}
+					BufferPool.Put(newPacketBufferPtr)
 				}()
 			case pMethodSessionRefresh:
 				// handle session refresh packet
-				data := make([]byte, datalen)
-				copy(data, newpacketBuffer[:datalen])
 				go func() {
-					err = n.handleSessionRefreshPacket(conn, data)
+					err = n.handleSessionRefreshPacket(conn, newpacketBuffer[:datalen])
 					if err != nil {
 						ThrowError(err)
 					}
+					BufferPool.Put(newPacketBufferPtr)
 				}()
 			default:
+				BufferPool.Put(newPacketBufferPtr)
 				// drop packet
 				TreeInfo.PacketRecvDropped += 1
 				fmt.Printf("packetDropped: method=%d, datalen=%d\n", method, datalen)
@@ -2071,6 +2101,7 @@ func (n *NodeTree) SendTo(ToUniqueID [IDlenth]byte, ChannelID [ChannelIDMaxLenth
 			if len(n.RemoteInitPoint.conn.rawConn) <= cu || n.RemoteInitPoint.conn.rawConn[cu] == nil {
 				// no actived connection
 				ThrowError(ErrUpstreamNoConn)
+				n.RemoteInitPoint.conn.currentConn = 0
 				return ErrUpstreamNoConn
 			}
 			n.RemoteInitPoint.conn.currentConn = (n.RemoteInitPoint.conn.currentConn + 1) % len(n.RemoteInitPoint.conn.rawConn)
